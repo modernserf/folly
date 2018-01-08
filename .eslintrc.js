@@ -11,6 +11,8 @@ module.exports = {
     ],
     "rules": {
         "indent": ["error", 4],
+        "comma-dangle": ["error", "always-multiline"],
+        "react/prop-types": ["off"],
     },
     "env": {
         "jest/globals": true
