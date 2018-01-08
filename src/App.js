@@ -1,4 +1,3 @@
-import PropTypes from 'prop-types'
 import React, { Component, Fragment } from 'react'
 import shortid from 'shortid'
 import { createStore, combineReducers } from 'redux'
@@ -11,6 +10,11 @@ const where = (xs, query) =>
 
 export const viewStates = ['view', 'edit']
 export const runStates = ['active', 'disabled']
+
+const List = ({ data, children, ...props }) =>
+    <ul {...props}>{data.map((d) => (
+        <li key={d.id}>{children(d)}</li>
+    ))}</ul>
 
 function facts ({ label, items }) {
     let parentID = shortid.generate()
@@ -69,13 +73,14 @@ const Container = styled.section`
         background-color: black;
         display: inline-block;
     }
-    ul {
-        min-width: 50vw;
-        border: 1px solid black;
-        padding: 0.5em;
-        border-radius: 0 1em 1em 1em;
-    }
-    li+li {
+`
+
+const FactList = styled(List)`
+    min-width: 50vw;
+    border: 1px solid black;
+    padding: 0.5em;
+    border-radius: 0 1em 1em 1em;
+    &>li+li {
         margin-top: 0.5em;
     }
 `
@@ -97,44 +102,49 @@ const FactActions = styled.span`
     flex: 0 0 auto;
 `
 
-class EditFactRow extends Component {
-    static propTypes = {
-        id: PropTypes.string.isRequired,
-        dispatch: PropTypes.func.isRequired,
-    }
+const EditFactRow = connect(
+    ({ data }, { id }) => ({ value: where(data, { id })[0].label }),
+)(class EditFactRow extends Component {
     state = {
         value: '',
     }
     componentDidMount () {
         this.setState({ value: this.props.value })
         this.input.focus()
+        setTimeout(() => this.input.select(), 1)
     }
-    onSubmit = (e) => {
-        e.preventDefault()
-        this.dispatch('updateFact', { value: this.state.value, id: this.props.id })
+    updateFact = () => {
+        this.props.dispatch('updateFact', { value: this.state.value, id: this.props.id })
+    }
+    setBuffer = (e) => {
+        this.setState({ value: e.target.value })
     }
     render () {
         return (
-            <form onSubmit={this.onSubmit}>
+            <form onSubmit={(e) => { e.preventDefault(); this.updateFact() }}>
                 <input ref={(el) => { this.input = el }}
-                    value={this.state.buffer}
+                    value={this.state.value}
                     onChange={this.setBuffer}
+                    onBlur={this.updateFact}
                 />
             </form>
         )
     }
-}
+})
 
 const FactRow = connect(
     ({ data }, { id }) => ({
-        label: where(data, { id })[0].label,
+        item: where(data, { id })[0],
     })
 )(class FactRow extends Component {
     render () {
-        const { id, label, dispatch } = this.props
+        const { id, item, dispatch } = this.props
         return (
             <FactRowContainer>
-                <FactRowLabel>{label}</FactRowLabel>
+                {{
+                    edit: () => <EditFactRow id={id} />,
+                    view: () => <FactRowLabel>{item.label}</FactRowLabel>,
+                }[item.viewState]()}
                 <FactActions>
                     <button
                         onClick={() => dispatch('editItem', id)}
@@ -151,12 +161,12 @@ const FactRow = connect(
     }
 })
 
-const FactList = connect(
+const FactGroup = connect(
     ({ data }, { id }) => ({
         parent: where(data, { id })[0],
         items: where(data, { type: 'fact', parentID: id }),
     })
-)(class FactList extends Component {
+)(class FactGroup extends Component {
     render () {
         const { id, parent, items, dispatch } = this.props
 
@@ -166,11 +176,9 @@ const FactList = connect(
                     <header>
                         <h1>{parent.label}</h1>
                     </header>
-                    <ul>{items.map((x) => (
-                        <li key={x.id}>
-                            <FactRow id={x.id} />
-                        </li>
-                    ))}</ul>
+                    <FactList data={items}>{(x) => (
+                        <FactRow id={x.id} />
+                    )}</FactList>
                 </Container>
                 <button onClick={() => dispatch('createFact', { parentID: id })}>New Fact</button>
             </Fragment>
@@ -178,10 +186,10 @@ const FactList = connect(
     }
 })
 
-const AppBody = styled.ul`
+const AppBody = styled(List)`
     font-family: "Parc Place";
     font-size: 12px;
-    li {
+    &>li {
         margin: 1em;
     }
 `
@@ -193,11 +201,9 @@ const App = connect(
         const { groups, dispatch } = this.props
         return (
             <Fragment>
-                <AppBody>
-                    {groups.map((f) => (
-                        <li key={f.id}><FactList id={f.id} /></li>
-                    ))}
-                </AppBody>
+                <AppBody data={groups}>{(f) => (
+                    <FactGroup id={f.id} />
+                )}</AppBody>
                 <button
                     onClick={() => dispatch('createList')}
                 >New List</button>
@@ -219,8 +225,25 @@ const dataReducer = (state = [], { type, payload }) => {
     }
     case 'createFact': {
         return state.concat([
-            { id: shortid.generate(), parentID: payload.parentID, label: 'New Fact', type: 'fact' },
+            {
+                id: shortid.generate(),
+                parentID: payload.parentID,
+                label: '',
+                type: 'fact',
+                viewState: 'edit',
+                runState: 'active',
+            },
         ])
+    }
+    case 'editItem': {
+        return state.map((d) => d.id === payload ? ({...d, viewState: 'edit'}) : d)
+    }
+    case 'updateFact': {
+        return state.map((d) => d.id === payload.id ? ({
+            ...d,
+            label: payload.value || 'New Fact',
+            viewState: 'view',
+        }) : d)
     }
     case 'deleteItem': {
         return state.filter((d) => d.id !== payload)
