@@ -188,6 +188,10 @@ const FactGroup = connect(
 
 const AppBody = styled(List)`
     font-family: "Parc Place";
+    -webkit-font-smoothing: none;
+    button {
+        -webkit-font-smoothing: subpixel-antialiased;
+    }
     font-size: 12px;
     &>li {
         margin: 1em;
