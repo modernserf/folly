@@ -4,6 +4,9 @@ import { createStore, combineReducers } from 'redux'
 export const viewStates = ['view', 'edit']
 export const runStates = ['active', 'disabled']
 
+const cycle = (states, currentState) =>
+    states[(states.indexOf(currentState) + 1) % states.length]
+
 const createFact = (extend = {}) => ({
     id: shortid.generate(),
     label: '',
@@ -16,7 +19,7 @@ const createFact = (extend = {}) => ({
 function facts ({ label, items }) {
     let parentID = shortid.generate()
     return [
-        { id: parentID, label, type: 'fact-group' },
+        { id: parentID, label, type: 'fact-group', runState: 'active' },
         ...items.map((label) => createFact({
             parentID,
             label,
@@ -69,6 +72,9 @@ const update = (f, where = defaultWhere) => (state, payload, action) =>
 const remove = (where = defaultWhere) => (state, payload, action) =>
     state.filter((x) => !where(x, payload, action))
 
+const pipe = (...reducers) => (prevState, payload, action) =>
+    reducers.reduce((state, reducer) => reducer(state, payload, action), prevState)
+
 const dataReducer = createReducer({
     createList: append(() =>
         [{ id: shortid.generate(), label: 'New List', type: 'fact-group' }]),
@@ -76,12 +82,27 @@ const dataReducer = createReducer({
         parentID,
         viewState: 'edit',
     })]),
-    editItem: update((item, payload) => ({...item, viewState: 'edit'})),
+    editItem: update((item) => ({ ...item, viewState: 'edit' })),
+    disableItem: update((item) => ({ ...item, runState: cycle(runStates, item.runState) })),
     updateFact: update((item, payload) => ({
         ...item,
         label: payload.value || 'New Fact',
         viewState: 'view',
     })),
+    updateAndCreateNextFact: pipe(
+        update((item, { value }) => ({
+            ...item,
+            label: value || 'New Fact',
+            viewState: 'view',
+        })),
+        (state, { id }) => {
+            const parentID = state.find((x) => x.id === id).parentID
+            return state.concat([createFact({
+                parentID,
+                viewState: 'edit',
+            })])
+        }
+    ),
     deleteItem: remove(),
 }, [])
 

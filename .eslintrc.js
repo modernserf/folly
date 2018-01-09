@@ -13,6 +13,7 @@ module.exports = {
         "indent": ["error", 4],
         "comma-dangle": ["error", "always-multiline"],
         "react/prop-types": ["off"],
+        "object-curly-spacing": ["error", "always"],
     },
     "env": {
         "jest/globals": true

@@ -1,6 +1,7 @@
 import React, { Component, Fragment } from 'react'
 import { Provider, connect } from 'react-redux'
 import styled from 'styled-components'
+import { Swipeable } from 'react-touch'
 import { store } from './data'
 import './App.css'
 
@@ -12,21 +13,27 @@ const List = ({ data, children, ...props }) =>
         <li key={d.id}>{children(d)}</li>
     ))}</ul>
 
-const Container = styled.section`
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    header {
-        border-radius: 1em 1em 0 0;
-        padding: 0.5em;
-        color: white;
-        background-color: black;
-        display: inline-block;
-    }
+const FactGroupContainer = styled.section`
+    padding-bottom: 0.5em;
+`
+
+const BaseHeader = styled.header`
+    padding: 0.5em;
+    color: white;
+    display: inline-block;
+`
+
+const FactGroupHeader = styled(BaseHeader)`
+    border-radius: 1em 1em 0 0;
+    background-color: black;
+`
+
+const DisabledFactGroupHeader = styled(BaseHeader)`
+    border-radius: 1em;
+    background-color: gray;
 `
 
 const FactList = styled(List)`
-    min-width: 50vw;
     border: 1px solid black;
     padding: 0.5em;
     border-radius: 0 1em 1em 1em;
@@ -36,20 +43,24 @@ const FactList = styled(List)`
 `
 
 const FactRowContainer = styled.div`
-    display: flex;
-    button {
-        appearance: none;
-        border: none;
-        text-decoration: underline;
-    }
 `
 
-const FactRowLabel = styled.span`
+const FactRowLabel = styled.div`
     flex: 1 0 auto;
+    color: ${({ disabled }) => disabled ? '#ccc' : 'black'};
 `
 
-const FactActions = styled.span`
-    flex: 0 0 auto;
+const FactInput = styled.input`
+    display: block;
+    width: 100%;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: white;
+    background-color: black;
 `
 
 const EditFactRow = connect(
@@ -66,13 +77,17 @@ const EditFactRow = connect(
     updateFact = () => {
         this.props.dispatch('updateFact', { value: this.state.value, id: this.props.id })
     }
+    createAndNext = (e) => {
+        e.preventDefault()
+        this.props.dispatch('updateAndCreateNextFact', { value: this.state.value, id: this.props.id })
+    }
     setBuffer = (e) => {
         this.setState({ value: e.target.value })
     }
     render () {
         return (
-            <form onSubmit={(e) => { e.preventDefault(); this.updateFact() }}>
-                <input ref={(el) => { this.input = el }}
+            <form onSubmit={this.createAndNext}>
+                <FactInput innerRef={(el) => { this.input = el }}
                     value={this.state.value}
                     onChange={this.setBuffer}
                     onBlur={this.updateFact}
@@ -82,34 +97,43 @@ const EditFactRow = connect(
     }
 })
 
-const FactRow = connect(
+const ViewFactRow = connect(
     ({ data }, { id }) => ({
         item: where(data, { id })[0],
     })
+)(({ id, item, dispatch }) => (
+    <Swipeable onSwipeLeft={() => dispatch('disableItem', { id })}>
+        <FactRowLabel disabled={item.runState === 'disabled'}
+            onClick={() => dispatch('editItem', { id })}>
+            {item.label}
+        </FactRowLabel>
+    </Swipeable>
+))
+
+const FactRow = connect(
+    ({ data }, { id }) => ({
+        viewState: where(data, { id })[0].viewState,
+    })
 )(class FactRow extends Component {
     render () {
-        const { id, item, dispatch } = this.props
+        const { id, viewState } = this.props
         return (
             <FactRowContainer>
                 {{
                     edit: () => <EditFactRow id={id} />,
-                    view: () => <FactRowLabel>{item.label}</FactRowLabel>,
-                }[item.viewState]()}
-                <FactActions>
-                    <button
-                        onClick={() => dispatch('editItem', {id})}
-                    >Edit</button>
-                    <button
-                        onClick={() => dispatch('disableItem', {id})}
-                    >Disable</button>
-                    <button
-                        onClick={() => dispatch('deleteItem', {id})}
-                    >Delete</button>
-                </FactActions>
+                    view: () => <ViewFactRow id={id} />,
+                }[viewState]()}
             </FactRowContainer>
         )
     }
 })
+
+const NewFactButton = styled.button`
+    appearance: none;
+    border: none;
+    font: inherit;
+    text-decoration: underline;
+`
 
 const FactGroup = connect(
     ({ data }, { id }) => ({
@@ -120,32 +144,68 @@ const FactGroup = connect(
     render () {
         const { id, parent, items, dispatch } = this.props
 
+        if (parent.runState === 'disabled') {
+            return (
+                <Swipeable onSwipeLeft={() => dispatch('disableItem', { id })}>
+                    <div>
+                        <DisabledFactGroupHeader>
+                            <h1>{parent.label}</h1>
+                        </DisabledFactGroupHeader>
+                    </div>
+                </Swipeable>
+            )
+        }
+
         return (
             <Fragment>
-                <Container>
-                    <header>
-                        <h1>{parent.label}</h1>
-                    </header>
+                <FactGroupContainer>
+                    <Swipeable onSwipeLeft={() => dispatch('disableItem', { id })}>
+                        <div>
+                            <FactGroupHeader>
+                                <h1>{parent.label}</h1>
+                            </FactGroupHeader>
+                        </div>
+                    </Swipeable>
                     <FactList data={items}>{(x) => (
                         <FactRow id={x.id} />
                     )}</FactList>
-                </Container>
-                <button onClick={() => dispatch('createFact', { parentID: id })}>New Fact</button>
+                </FactGroupContainer>
+                <NewFactButton onClick={() => dispatch('createFact', { parentID: id })}>
+                    + New Fact
+                </NewFactButton>
             </Fragment>
         )
     }
 })
 
-const AppBody = styled(List)`
-    font-family: "Parc Place";
-    -webkit-font-smoothing: none;
-    button {
-        -webkit-font-smoothing: subpixel-antialiased;
-    }
-    font-size: 12px;
+const AppBody = styled.div`
+    font-family: "Comic Sans MS", sans-serif;
+    font-size: 16px;
+    line-height: 18px;
+`
+
+const AppContent = styled(List)`
     &>li {
         margin: 1em;
     }
+    padding-bottom: 100px;
+`
+
+const Footer = styled.footer`
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    background-color: rgba(255,255,255,0.9);
+    border-top: 1px solid #ccc;
+    width: 100%;
+    padding: 0.5em;
+`
+
+const NewListButton = styled.button`
+    appearance: none;
+    border: none;
+    font: inherit;
+    text-decoration: underline;
 `
 
 const App = connect(
@@ -154,14 +214,16 @@ const App = connect(
     render () {
         const { groups, dispatch } = this.props
         return (
-            <Fragment>
-                <AppBody data={groups}>{(f) => (
+            <AppBody>
+                <AppContent data={groups}>{(f) => (
                     <FactGroup id={f.id} />
-                )}</AppBody>
-                <button
-                    onClick={() => dispatch('createList')}
-                >New List</button>
-            </Fragment>
+                )}</AppContent>
+                <Footer>
+                    <NewListButton onClick={() => dispatch('createList')}>
+                        + New List
+                    </NewListButton>
+                </Footer>
+            </AppBody>
         )
     }
 })
