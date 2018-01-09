@@ -1,4 +1,5 @@
-import React, { Component, Fragment } from 'react'
+import { Component, Fragment } from 'react'
+import h from 'react-hyperscript'
 import { Provider, connect } from 'react-redux'
 import styled from 'styled-components'
 import { Swipeable } from 'react-touch'
@@ -8,10 +9,11 @@ import './App.css'
 const where = (xs, query) =>
     xs.filter((x) => Object.entries(query).every(([k, v]) => x[k] === v))
 
+const match = (value, options) => options[value]()
+
 const List = ({ data, children, ...props }) =>
-    <ul {...props}>{data.map((d) => (
-        <li key={d.id}>{children(d)}</li>
-    ))}</ul>
+    h('ul', props, data.map((d) =>
+        h('li', { key: d.id }, children(d))))
 
 const FactGroupContainer = styled.section`
     padding-bottom: 0.5em;
@@ -85,15 +87,14 @@ const EditFactRow = connect(
         this.setState({ value: e.target.value })
     }
     render () {
-        return (
-            <form onSubmit={this.createAndNext}>
-                <FactInput innerRef={(el) => { this.input = el }}
-                    value={this.state.value}
-                    onChange={this.setBuffer}
-                    onBlur={this.updateFact}
-                />
-            </form>
-        )
+        return h('form', { onSubmit: this.createAndNext }, [
+            h(FactInput, {
+                innerRef: (el) => { this.input = el },
+                value: this.state.value,
+                onChange: this.setBuffer,
+                onBlur: this.updateFact,
+            }),
+        ])
     }
 })
 
@@ -101,32 +102,27 @@ const ViewFactRow = connect(
     ({ data }, { id }) => ({
         item: where(data, { id })[0],
     })
-)(({ id, item, dispatch }) => (
-    <Swipeable onSwipeLeft={() => dispatch('disableItem', { id })}>
-        <FactRowLabel disabled={item.runState === 'disabled'}
-            onClick={() => dispatch('editItem', { id })}>
-            {item.label}
-        </FactRowLabel>
-    </Swipeable>
-))
+)(({ id, item, dispatch }) =>
+    h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
+        h(FactRowLabel, {
+            disabled: item.runState === 'disabled',
+            onClick: () => dispatch('editItem', { id }),
+            children: item.label,
+        }),
+    ])
+)
 
 const FactRow = connect(
     ({ data }, { id }) => ({
         viewState: where(data, { id })[0].viewState,
     })
-)(class FactRow extends Component {
-    render () {
-        const { id, viewState } = this.props
-        return (
-            <FactRowContainer>
-                {{
-                    edit: () => <EditFactRow id={id} />,
-                    view: () => <ViewFactRow id={id} />,
-                }[viewState]()}
-            </FactRowContainer>
-        )
-    }
-})
+)(({ id, viewState }) =>
+    h(FactRowContainer, [
+        match(viewState, {
+            edit: () => h(EditFactRow, { id }),
+            view: () => h(ViewFactRow, { id }),
+        }),
+    ]))
 
 const NewFactButton = styled.button`
     appearance: none;
@@ -135,48 +131,42 @@ const NewFactButton = styled.button`
     text-decoration: underline;
 `
 
+const DisabledFactGroup = ({ id, parent, dispatch }) =>
+    h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
+        h('div', [
+            h(DisabledFactGroupHeader, [
+                h('h1', parent.label),
+            ]),
+        ]),
+    ])
+
+const ActiveFactGroup = ({ id, parent, items, dispatch }) =>
+    h(Fragment, [
+        h(FactGroupContainer, [
+            h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
+                h('div', [
+                    h(FactGroupHeader, [
+                        h('h1', [parent.label]),
+                    ]),
+                ]),
+            ]),
+            h(FactList, { data: items }, ({ id }) =>
+                h(FactRow, { id })),
+        ]),
+        h(NewFactButton, { onClick: () => dispatch('createFact', { parentID: id }) }, [
+            '+ New Fact',
+        ]),
+    ])
+
 const FactGroup = connect(
     ({ data }, { id }) => ({
         parent: where(data, { id })[0],
         items: where(data, { type: 'fact', parentID: id }),
     })
-)(class FactGroup extends Component {
-    render () {
-        const { id, parent, items, dispatch } = this.props
-
-        if (parent.runState === 'disabled') {
-            return (
-                <Swipeable onSwipeLeft={() => dispatch('disableItem', { id })}>
-                    <div>
-                        <DisabledFactGroupHeader>
-                            <h1>{parent.label}</h1>
-                        </DisabledFactGroupHeader>
-                    </div>
-                </Swipeable>
-            )
-        }
-
-        return (
-            <Fragment>
-                <FactGroupContainer>
-                    <Swipeable onSwipeLeft={() => dispatch('disableItem', { id })}>
-                        <div>
-                            <FactGroupHeader>
-                                <h1>{parent.label}</h1>
-                            </FactGroupHeader>
-                        </div>
-                    </Swipeable>
-                    <FactList data={items}>{(x) => (
-                        <FactRow id={x.id} />
-                    )}</FactList>
-                </FactGroupContainer>
-                <NewFactButton onClick={() => dispatch('createFact', { parentID: id })}>
-                    + New Fact
-                </NewFactButton>
-            </Fragment>
-        )
-    }
-})
+)((props) => match(props.parent.runState, {
+    active: () => h(ActiveFactGroup, props),
+    disabled: () => h(DisabledFactGroup, props),
+}))
 
 const AppBody = styled.div`
     font-family: "Comic Sans MS", sans-serif;
@@ -210,24 +200,18 @@ const NewListButton = styled.button`
 
 const App = connect(
     ({ data }) => ({ groups: where(data, { type: 'fact-group' }) })
-)(class App extends Component {
-    render () {
-        const { groups, dispatch } = this.props
-        return (
-            <AppBody>
-                <AppContent data={groups}>{(f) => (
-                    <FactGroup id={f.id} />
-                )}</AppContent>
-                <Footer>
-                    <NewListButton onClick={() => dispatch('createList')}>
-                        + New List
-                    </NewListButton>
-                </Footer>
-            </AppBody>
-        )
-    }
-})
+)(({ groups, dispatch }) => (
+    h(AppBody, [
+        h(AppContent, { data: groups }, ({ id }) =>
+            h(FactGroup, { id })),
+        h(Footer, [
+            h(NewListButton, { onClick: () => dispatch('createList') }, [
+                '+ New List',
+            ]),
+        ]),
+    ])
+))
 
-const Root = () => <Provider store={store}><App /></Provider>
+const Root = () => h(Provider, { store }, h(App))
 
 export default Root
