@@ -7,6 +7,15 @@ export const runStates = ['active', 'disabled']
 const cycle = (states, currentState) =>
     states[(states.indexOf(currentState) + 1) % states.length]
 
+const createFactGroup = (extend = {}) => ({
+    id: shortid.generate(),
+    label: '',
+    type: 'fact-group',
+    viewState: 'view',
+    runState: 'active',
+    ...extend,
+})
+
 const createFact = (extend = {}) => ({
     id: shortid.generate(),
     label: '',
@@ -17,11 +26,11 @@ const createFact = (extend = {}) => ({
 })
 
 function facts ({ label, items }) {
-    let parentID = shortid.generate()
+    const parent = createFactGroup({ label })
     return [
-        { id: parentID, label, type: 'fact-group', runState: 'active' },
+        parent,
         ...items.map((label) => createFact({
-            parentID,
+            parentID: parent.id,
             label,
         })),
     ]
@@ -76,14 +85,33 @@ const pipe = (...reducers) => (prevState, payload, action) =>
     reducers.reduce((state, reducer) => reducer(state, payload, action), prevState)
 
 const dataReducer = createReducer({
-    createList: append(() =>
-        [{ id: shortid.generate(), label: 'New List', type: 'fact-group' }]),
+    // works on both facts and fact groups
+    editItem: update((item) => ({ ...item, viewState: 'edit' })),
+    disableItem: update((item) => ({ ...item, runState: cycle(runStates, item.runState) })),
+
+    createFactGroup: append(() => [createFactGroup({
+        viewState: 'edit',
+        firstEdit: true,
+    })]),
+    updateFactGroup: pipe(
+        update((item, payload) => ({
+            ...item,
+            label: payload.value || 'New Group',
+            viewState: 'view',
+        })),
+        (state, { id }) => {
+            const { firstEdit } = state.find((x) => x.id === id)
+            if (!firstEdit) { return state }
+            return state.concat([createFact({
+                parentID: id,
+                viewState: 'edit',
+            })])
+        }
+    ),
     createFact: append(({ parentID }) => [createFact({
         parentID,
         viewState: 'edit',
     })]),
-    editItem: update((item) => ({ ...item, viewState: 'edit' })),
-    disableItem: update((item) => ({ ...item, runState: cycle(runStates, item.runState) })),
     updateFact: update((item, payload) => ({
         ...item,
         label: payload.value || 'New Fact',

@@ -49,7 +49,7 @@ const FactRowContainer = styled.div`
 
 const FactRowLabel = styled.div`
     flex: 1 0 auto;
-    color: ${({ disabled }) => disabled ? '#ccc' : 'black'};
+    color: ${({ runState }) => runState === 'disabled' ? '#ccc' : 'black'};
 `
 
 const FactInput = styled.input`
@@ -105,7 +105,7 @@ const ViewFactRow = connect(
 )(({ id, item, dispatch }) =>
     h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
         h(FactRowLabel, {
-            disabled: item.runState === 'disabled',
+            runState: item.runState,
             onClick: () => dispatch('editItem', { id }),
             children: item.label,
         }),
@@ -140,14 +140,58 @@ const DisabledFactGroup = ({ id, parent, dispatch }) =>
         ]),
     ])
 
+const FactGroupInput = styled.input`
+    display: block;
+    width: 100%;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: black;
+    background-color: white;
+`
+
+const EditFactGroup = connect(
+    ({ data }, { id }) => ({ value: where(data, { id })[0].label }),
+)(class EditFactGroup extends Component {
+    state = {
+        value: '',
+    }
+    componentDidMount () {
+        this.setState({ value: this.props.value })
+        this.input.focus()
+        setTimeout(() => this.input.select(), 1)
+    }
+    updateGroup = () => {
+        this.props.dispatch('updateFactGroup', { value: this.state.value, id: this.props.id })
+    }
+    setBuffer = (e) => {
+        this.setState({ value: e.target.value })
+    }
+    render () {
+        return h('form', { onSubmit: (e) => { e.preventDefault(); this.updateGroup() } }, [
+            h(FactGroupInput, {
+                innerRef: (el) => { this.input = el },
+                value: this.state.value,
+                onChange: this.setBuffer,
+                onBlur: this.updateGroup,
+            }),
+        ])
+    }
+})
+
 const ActiveFactGroup = ({ id, parent, items, dispatch }) =>
     h(Fragment, [
         h(FactGroupContainer, [
             h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
                 h('div', [
-                    h(FactGroupHeader, [
-                        h('h1', [parent.label]),
-                    ]),
+                    h(FactGroupHeader, { onClick: () => dispatch('editItem', { id }) },
+                        match(parent.viewState, {
+                            edit: () => h(EditFactGroup, { id }),
+                            view: () => h('h1', [parent.label]),
+                        })),
                 ]),
             ]),
             h(FactList, { data: items }, ({ id }) =>
@@ -169,7 +213,7 @@ const FactGroup = connect(
 }))
 
 const AppBody = styled.div`
-    font-family: "Comic Sans MS", sans-serif;
+    font-family: "Comic Sans MS", "Marker Felt", sans-serif;
     font-size: 16px;
     line-height: 18px;
 `
@@ -205,8 +249,8 @@ const App = connect(
         h(AppContent, { data: groups }, ({ id }) =>
             h(FactGroup, { id })),
         h(Footer, [
-            h(NewListButton, { onClick: () => dispatch('createList') }, [
-                '+ New List',
+            h(NewListButton, { onClick: () => dispatch('createFactGroup') }, [
+                '+ New Fact Group',
             ]),
         ]),
     ])
