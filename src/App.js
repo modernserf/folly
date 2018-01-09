@@ -1,66 +1,16 @@
 import React, { Component, Fragment } from 'react'
-import shortid from 'shortid'
-import { createStore, combineReducers } from 'redux'
 import { Provider, connect } from 'react-redux'
 import styled from 'styled-components'
+import { store } from './data'
 import './App.css'
 
 const where = (xs, query) =>
     xs.filter((x) => Object.entries(query).every(([k, v]) => x[k] === v))
 
-export const viewStates = ['view', 'edit']
-export const runStates = ['active', 'disabled']
-
 const List = ({ data, children, ...props }) =>
     <ul {...props}>{data.map((d) => (
         <li key={d.id}>{children(d)}</li>
     ))}</ul>
-
-function facts ({ label, items }) {
-    let parentID = shortid.generate()
-    return [
-        { id: parentID, label, type: 'fact-group' },
-        ...items.map((x) =>
-            ({
-                id: shortid.generate(),
-                parentID,
-                label: x,
-                type: 'fact',
-                viewState: 'view',
-                runState: 'active',
-            })
-        ),
-    ]
-}
-
-const stations = facts({
-    label: 'Stations',
-    items: [
-        'Alewife',
-        'Davis',
-        'Porter',
-        'Harvard',
-        'Central',
-        'Kendall',
-        'Charles/MGH',
-        'Park St',
-        'Downtown Crossing',
-        'South Station',
-        'Broadway',
-        'Andrew',
-        'JFK/UMass',
-    ],
-})
-
-const lines = facts({
-    label: 'Lines',
-    items: [
-        'Red',
-        'Blue',
-        'Orange',
-        'Green',
-    ],
-})
 
 const Container = styled.section`
     display: flex;
@@ -147,13 +97,13 @@ const FactRow = connect(
                 }[item.viewState]()}
                 <FactActions>
                     <button
-                        onClick={() => dispatch('editItem', id)}
+                        onClick={() => dispatch('editItem', {id})}
                     >Edit</button>
                     <button
-                        onClick={() => dispatch('disableItem', id)}
+                        onClick={() => dispatch('disableItem', {id})}
                     >Disable</button>
                     <button
-                        onClick={() => dispatch('deleteItem', id)}
+                        onClick={() => dispatch('deleteItem', {id})}
                     >Delete</button>
                 </FactActions>
             </FactRowContainer>
@@ -215,62 +165,6 @@ const App = connect(
         )
     }
 })
-
-const initState = {
-    data: [...stations, ...lines],
-}
-
-const dataReducer = (state = [], { type, payload }) => {
-    switch (type) {
-    case 'createList': {
-        return state.concat([
-            { id: shortid.generate(), label: 'New List', type: 'fact-group' },
-        ])
-    }
-    case 'createFact': {
-        return state.concat([
-            {
-                id: shortid.generate(),
-                parentID: payload.parentID,
-                label: '',
-                type: 'fact',
-                viewState: 'edit',
-                runState: 'active',
-            },
-        ])
-    }
-    case 'editItem': {
-        return state.map((d) => d.id === payload ? ({...d, viewState: 'edit'}) : d)
-    }
-    case 'updateFact': {
-        return state.map((d) => d.id === payload.id ? ({
-            ...d,
-            label: payload.value || 'New Fact',
-            viewState: 'view',
-        }) : d)
-    }
-    case 'deleteItem': {
-        return state.filter((d) => d.id !== payload)
-    }
-    default:
-        return state
-    }
-}
-
-const rootReducer = combineReducers({
-    data: dataReducer,
-})
-
-const store = createStore(rootReducer, initState)
-
-const _dispatch = store.dispatch
-store.dispatch = (type, payload) => {
-    if (typeof type === 'string') {
-        _dispatch({ type, payload })
-    } else {
-        _dispatch(type)
-    }
-}
 
 const Root = () => <Provider store={store}><App /></Provider>
 
