@@ -6,9 +6,6 @@ import { Swipeable } from 'react-touch'
 import { store } from './data'
 import './App.css'
 
-const where = (xs, query) =>
-    xs.filter((x) => Object.entries(query).every(([k, v]) => x[k] === v))
-
 const match = (value, options) => options[value]()
 
 const List = ({ data, children, ...props }) =>
@@ -66,7 +63,7 @@ const FactInput = styled.input`
 `
 
 const EditFactRow = connect(
-    ({ data }, { id }) => ({ value: where(data, { id })[0].label }),
+    (db, { id }) => ({ value: db.find(id, 'meta/label') })
 )(class EditFactRow extends Component {
     state = {
         value: '',
@@ -81,7 +78,11 @@ const EditFactRow = connect(
     }
     createAndNext = (e) => {
         e.preventDefault()
-        this.props.dispatch('updateAndCreateNextFact', { value: this.state.value, id: this.props.id })
+        this.props.dispatch('updateAndCreateNextFact', {
+            value: this.state.value,
+            id: this.props.id,
+            parentID: this.props.parentID,
+        })
     }
     setBuffer = (e) => {
         this.setState({ value: e.target.value })
@@ -90,7 +91,7 @@ const EditFactRow = connect(
         return h('form', { onSubmit: this.createAndNext }, [
             h(FactInput, {
                 innerRef: (el) => { this.input = el },
-                value: this.state.value,
+                value: this.state.value || '',
                 onChange: this.setBuffer,
                 onBlur: this.updateFact,
             }),
@@ -99,27 +100,25 @@ const EditFactRow = connect(
 })
 
 const ViewFactRow = connect(
-    ({ data }, { id }) => ({
-        item: where(data, { id })[0],
+    (db, { id }) => ({
+        runState: db.find(id, 'runState'),
+        label: db.find(id, 'meta/label'),
     })
-)(({ id, item, dispatch }) =>
+)(({ id, runState, label, dispatch }) =>
     h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
         h(FactRowLabel, {
-            runState: item.runState,
+            runState: runState,
             onClick: () => dispatch('editItem', { id }),
-            children: item.label,
-        }),
+        }, label),
     ])
 )
 
 const FactRow = connect(
-    ({ data }, { id }) => ({
-        viewState: where(data, { id })[0].viewState,
-    })
-)(({ id, viewState }) =>
+    (db, { id }) => ({ viewState: db.find(id, 'viewState') })
+)(({ id, parentID, viewState }) =>
     h(FactRowContainer, [
         match(viewState, {
-            edit: () => h(EditFactRow, { id }),
+            edit: () => h(EditFactRow, { id, parentID }),
             view: () => h(ViewFactRow, { id }),
         }),
     ]))
@@ -131,11 +130,11 @@ const NewFactButton = styled.button`
     text-decoration: underline;
 `
 
-const DisabledFactGroup = ({ id, parent, dispatch }) =>
+const DisabledFactGroup = ({ id, label, dispatch }) =>
     h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
         h('div', [
             h(DisabledFactGroupHeader, [
-                h('h1', parent.label),
+                h('h1', label),
             ]),
         ]),
     ])
@@ -154,7 +153,7 @@ const FactGroupInput = styled.input`
 `
 
 const EditFactGroup = connect(
-    ({ data }, { id }) => ({ value: where(data, { id })[0].label }),
+    (db, { id }) => ({ value: db.find(id, 'meta/label') })
 )(class EditFactGroup extends Component {
     state = {
         value: '',
@@ -174,7 +173,7 @@ const EditFactGroup = connect(
         return h('form', { onSubmit: (e) => { e.preventDefault(); this.updateGroup() } }, [
             h(FactGroupInput, {
                 innerRef: (el) => { this.input = el },
-                value: this.state.value,
+                value: this.state.value || '',
                 onChange: this.setBuffer,
                 onBlur: this.updateGroup,
             }),
@@ -182,20 +181,20 @@ const EditFactGroup = connect(
     }
 })
 
-const ActiveFactGroup = ({ id, parent, items, dispatch }) =>
+const ActiveFactGroup = ({ id, viewState, label, items, dispatch }) =>
     h(Fragment, [
         h(FactGroupContainer, [
             h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
                 h('div', [
                     h(FactGroupHeader, { onClick: () => dispatch('editItem', { id }) },
-                        match(parent.viewState, {
+                        match(viewState, {
                             edit: () => h(EditFactGroup, { id }),
-                            view: () => h('h1', [parent.label]),
+                            view: () => h('h1', [label]),
                         })),
                 ]),
             ]),
-            h(FactList, { data: items }, ({ id }) =>
-                h(FactRow, { id })),
+            h(FactList, { data: items }, (childID) =>
+                h(FactRow, { id: childID, parentID: id })),
         ]),
         h(NewFactButton, { onClick: () => dispatch('createFact', { parentID: id }) }, [
             '+ New Fact',
@@ -203,11 +202,13 @@ const ActiveFactGroup = ({ id, parent, items, dispatch }) =>
     ])
 
 const FactGroup = connect(
-    ({ data }, { id }) => ({
-        parent: where(data, { id })[0],
-        items: where(data, { type: 'fact', parentID: id }),
+    (db, { id }) => ({
+        runState: db.find(id, 'runState'),
+        viewState: db.find(id, 'viewState'),
+        label: db.find(id, 'meta/label'),
+        items: db.findAll(id, 'children'),
     })
-)((props) => match(props.parent.runState, {
+)((props) => match(props.runState, {
     active: () => h(ActiveFactGroup, props),
     disabled: () => h(DisabledFactGroup, props),
 }))
@@ -243,10 +244,10 @@ const NewListButton = styled.button`
 `
 
 const App = connect(
-    ({ data }) => ({ groups: where(data, { type: 'fact-group' }) })
-)(({ groups, dispatch }) => (
+    (db) => ({ data: db.where({ 'meta/type': 'fact_group' }) }),
+)(({ data, dispatch }) => (
     h(AppBody, [
-        h(AppContent, { data: groups }, ({ id }) =>
+        h(AppContent, { data }, (id) =>
             h(FactGroup, { id })),
         h(Footer, [
             h(NewListButton, { onClick: () => dispatch('createFactGroup') }, [

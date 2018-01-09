@@ -1,68 +1,45 @@
-import shortid from 'shortid'
-import { createStore, combineReducers } from 'redux'
-
-export const viewStates = ['view', 'edit']
-export const runStates = ['active', 'disabled']
+import { createStore } from 'redux'
+import DB from './db'
 
 const cycle = (states, currentState) =>
     states[(states.indexOf(currentState) + 1) % states.length]
 
-const createFactGroup = (extend = {}) => ({
-    id: shortid.generate(),
-    label: '',
-    type: 'fact-group',
-    viewState: 'view',
-    runState: 'active',
-    ...extend,
-})
+export const viewStates = ['view', 'edit']
+export const runStates = ['active', 'disabled']
 
-const createFact = (extend = {}) => ({
-    id: shortid.generate(),
-    label: '',
-    type: 'fact',
-    viewState: 'view',
-    runState: 'active',
-    ...extend,
-})
+const factGroup = (l) => ({ 'meta/type': 'fact_group', 'meta/label': l, viewState: 'view', runState: 'active' })
+const fact = (l) => ({ 'meta/type': 'fact', 'meta/label': l, viewState: 'view', runState: 'active' })
 
-function facts ({ label, items }) {
-    const parent = createFactGroup({ label })
-    return [
-        parent,
-        ...items.map((label) => createFact({
-            parentID: parent.id,
-            label,
-        })),
-    ]
-}
+const db = new DB({
+    stations: {
+        ...factGroup('Stations'),
+        children: [
+            'alewife', 'davis', 'porter', 'harvard', 'central', 'kendall',
+            'charles', 'park', 'dtx', 'south', 'broadway', 'andrew', 'jfk',
+        ],
+    },
+    lines: {
+        ...factGroup('Lines'),
+        children: ['red', 'blue', 'orange', 'green'],
+    },
+    alewife: fact('Alewife'),
+    davis: fact('Davis'),
+    porter: fact('Porter'),
+    harvard: fact('Harvard'),
+    central: fact('Central'),
+    kendall: fact('Kendall/MIT'),
+    charles: fact('Charles/MGH'),
+    park: fact('Park St'),
+    dtx: fact('Downtown Crossing'),
+    south: fact('South Station'),
+    broadway: fact('Broadway'),
+    andrew: fact('Andrew'),
+    jfk: fact('JFK/UMass'),
 
-const stations = facts({
-    label: 'Stations',
-    items: [
-        'Alewife',
-        'Davis',
-        'Porter',
-        'Harvard',
-        'Central',
-        'Kendall',
-        'Charles/MGH',
-        'Park St',
-        'Downtown Crossing',
-        'South Station',
-        'Broadway',
-        'Andrew',
-        'JFK/UMass',
-    ],
-})
-
-const lines = facts({
-    label: 'Lines',
-    items: [
-        'Red',
-        'Blue',
-        'Orange',
-        'Green',
-    ],
+    red: fact('Red'),
+    blue: fact('Blue'),
+    orange: fact('Orange'),
+    green: fact('Green'),
 })
 
 const createReducer = (map, initState) => (state = initState, action) => {
@@ -72,77 +49,67 @@ const createReducer = (map, initState) => (state = initState, action) => {
     return state
 }
 
-const defaultWhere = (x, payload) => x.id === payload.id
-
-const append = (f) => (state, payload, action) =>
-    state.concat(f(payload, action))
-const update = (f, where = defaultWhere) => (state, payload, action) =>
-    state.map((x) => where(x, payload, action) ? f(x, payload, action) : x)
-const remove = (where = defaultWhere) => (state, payload, action) =>
-    state.filter((x) => !where(x, payload, action))
-
-const pipe = (...reducers) => (prevState, payload, action) =>
-    reducers.reduce((state, reducer) => reducer(state, payload, action), prevState)
-
-const dataReducer = createReducer({
-    // works on both facts and fact groups
-    editItem: update((item) => ({ ...item, viewState: 'edit' })),
-    disableItem: update((item) => ({ ...item, runState: cycle(runStates, item.runState) })),
-
-    createFactGroup: append(() => [createFactGroup({
-        viewState: 'edit',
-        firstEdit: true,
-    })]),
-    updateFactGroup: pipe(
-        update((item, payload) => ({
-            ...item,
-            label: payload.value || 'New Group',
-            viewState: 'view',
-        })),
-        (state, { id }) => {
-            const { firstEdit } = state.find((x) => x.id === id)
-            if (!firstEdit) { return state }
-            return state.concat([createFact({
-                parentID: id,
+const rootReducer = createReducer({
+    // both facts and groups
+    editItem: (db, { id }) =>
+        db.patch(id, { viewState: 'edit' }),
+    disableItem: (db, { id }) => {
+        const prevState = db.find(id, 'runState')
+        return db.patch(id, { runState: cycle(runStates, prevState) })
+    },
+    createFactGroup: (db) => {
+        const [, next] = db.insert({
+            ...factGroup(''),
+            viewState: 'edit',
+            firstEdit: true,
+        })
+        return next
+    },
+    updateFactGroup: (db, { value, id }) => {
+        const children = db.findAll(id, 'children')
+        if (db.find(id, 'firstEdit')) {
+            let [childID, next] = db.insert({
+                ...fact(''),
                 viewState: 'edit',
-            })])
+            })
+            children.push(childID)
+            db = next
         }
-    ),
-    createFact: append(({ parentID }) => [createFact({
-        parentID,
-        viewState: 'edit',
-    })]),
-    updateFact: update((item, payload) => ({
-        ...item,
-        label: payload.value || 'New Fact',
-        viewState: 'view',
-    })),
-    updateAndCreateNextFact: pipe(
-        update((item, { value }) => ({
-            ...item,
-            label: value || 'New Fact',
+        return db.patch(id, {
+            'meta/label': value || 'New Group',
+            firstEdit: false,
             viewState: 'view',
-        })),
-        (state, { id }) => {
-            const parentID = state.find((x) => x.id === id).parentID
-            return state.concat([createFact({
-                parentID,
-                viewState: 'edit',
-            })])
-        }
-    ),
-    deleteItem: remove(),
-}, [])
+            children,
+        })
+    },
+    createFact: (db, { parentID }) => {
+        const [id, next] = db.insert({
+            ...fact(''),
+            viewState: 'edit',
+        })
+        return next.push([parentID, 'children', id])
+    },
+    updateFact: (db, { id, value }) => {
+        return db.patch(id, {
+            'meta/label': value || 'New Fact',
+            viewState: 'view',
+        })
+    },
+    updateAndCreateNextFact: (db, { id, parentID, value }) => {
+        const next = db.patch(id, {
+            'meta/label': value || 'New Fact',
+            viewState: 'view',
+        })
+        const [newID, next2] = next.insert({
+            ...fact(''),
+            viewState: 'edit',
+        })
 
-const rootReducer = combineReducers({
-    data: dataReducer,
-})
+        return next2.push([parentID, 'children', newID])
+    },
+}, db)
 
-const initState = {
-    data: [...stations, ...lines],
-}
-
-export const store = createStore(rootReducer, initState)
+export const store = createStore(rootReducer)
 
 const _dispatch = store.dispatch
 store.dispatch = (type, payload) => {
