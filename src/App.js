@@ -4,15 +4,11 @@ import { Provider, connect } from 'react-redux'
 import styled from 'styled-components'
 import { Swipeable } from 'react-touch'
 import { store } from './data'
-import { List, TextForm } from './helpers'
+import { List, TextForm, Autocomplete } from './helpers'
 import './App.css'
 
 const match = (value, options) => options[value]()
 const pull = (...keys) => (db, { id }) => db.pull(id, keys)
-
-const FactGroupContainer = styled.section`
-    padding-bottom: 0.5em;
-`
 
 const BaseHeader = styled.header`
     padding: 0.5em;
@@ -60,13 +56,41 @@ const FactInput = styled(TextForm)`
     background-color: black;
 `
 
+const FloatingAutocomplete = styled(Autocomplete)`
+    position:fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    display: flex;
+    z-index: 1;
+    overflow: scroll;
+    button {
+        appearance:none;
+        border: 1px solid black;
+        font-family: inherit;
+        font-size: inherit;
+        white-space: nowrap;
+        background-color: white;
+    }
+`
+
 const EditFactRow = connect(
-    pull('label'),
-)(({ id, parentID, label: initialValue, dispatch }) => h(FactInput, {
+    (db, { id }) => ({
+        initialValue: db.find(id, 'label'),
+        options: [...db.query((q) => [
+            [q.id, 'type', 'fact'],
+            [q.id, 'label', q.label],
+        ])],
+    }),
+)(({ id, parentID, initialValue, options, dispatch }) => h(FactInput, {
     initialValue,
     onBlur: (value) => dispatch('updateFact', { value, id }),
     onSubmit: (value) => dispatch('updateAndCreateNextFact', { value, id, parentID }),
-}))
+}, ({ value }) => h(FloatingAutocomplete, {
+    value,
+    options,
+    onChange: (x) => dispatch('updateFact', { value: x, id }),
+})))
 
 const ViewFactRow = connect(
     pull('runState', 'label')
@@ -125,6 +149,10 @@ const EditFactGroup = connect(
     onBlur: (value) => dispatch('updateFactGroup', { id, value }),
     onSubmit: (value) => dispatch('updateFactGroup', { id, value }),
 }))
+
+const FactGroupContainer = styled.section`
+    padding-bottom: 0.5em;
+`
 
 const ActiveFactGroup = ({ id, viewState, label, children, dispatch }) =>
     h(Fragment, [
