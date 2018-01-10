@@ -1,18 +1,14 @@
-import { Component, Fragment } from 'react'
+import { Fragment } from 'react'
 import h from 'react-hyperscript'
-import PropTypes from 'prop-types'
 import { Provider, connect } from 'react-redux'
 import styled from 'styled-components'
-import omit from 'lodash/omit'
 import { Swipeable } from 'react-touch'
 import { store } from './data'
+import { List, TextForm } from './helpers'
 import './App.css'
 
 const match = (value, options) => options[value]()
-
-const List = ({ data, children, ...props }) =>
-    h('ul', props, data.map((d) =>
-        h('li', { key: d.id }, children(d))))
+const pull = (...keys) => (db, { id }) => db.pull(id, keys)
 
 const FactGroupContainer = styled.section`
     padding-bottom: 0.5em;
@@ -51,46 +47,6 @@ const FactRowLabel = styled.div`
     color: ${({ runState }) => runState === 'disabled' ? '#ccc' : 'black'};
 `
 
-class TextForm extends Component {
-    static propTypes = {
-        initialValue: PropTypes.string,
-        onSubmit: PropTypes.func.isRequired,
-        onBlur: PropTypes.func.isRequired,
-    }
-    state = {
-        value: '',
-    }
-    componentDidMount () {
-        this.setState({ value: this.props.initialValue })
-        this.input.focus()
-        setTimeout(() => this.input.select(), 1)
-    }
-    setRef = (el) => {
-        this.input = el
-    }
-    onSubmit = (e) => {
-        e.preventDefault()
-        this.props.onSubmit(this.state.value)
-    }
-    onBlur = () => {
-        this.props.onBlur(this.state.value)
-    }
-    onChange = (e) => {
-        this.setState({ value: e.target.value })
-    }
-    render () {
-        const { value = '' } = this.state
-        const { onSubmit, onBlur, onChange } = this
-        const containerProps = Object.assign(
-            omit(this.props, ['onSubmit', 'onBlur', 'initialValue']),
-            { ref: this.setRef, value, onChange, onBlur })
-
-        return h('form', { onSubmit }, [
-            h('input', containerProps),
-        ])
-    }
-}
-
 const FactInput = styled(TextForm)`
     display: block;
     width: 100%;
@@ -105,18 +61,15 @@ const FactInput = styled(TextForm)`
 `
 
 const EditFactRow = connect(
-    (db, { id }) => ({ value: db.find(id, 'meta/label') })
-)(({ id, parentID, value: initialValue, dispatch }) => h(FactInput, {
+    pull('label'),
+)(({ id, parentID, label: initialValue, dispatch }) => h(FactInput, {
     initialValue,
     onBlur: (value) => dispatch('updateFact', { value, id }),
     onSubmit: (value) => dispatch('updateAndCreateNextFact', { value, id, parentID }),
 }))
 
 const ViewFactRow = connect(
-    (db, { id }) => ({
-        runState: db.find(id, 'runState'),
-        label: db.find(id, 'meta/label'),
-    })
+    pull('runState', 'label')
 )(({ id, runState, label, dispatch }) =>
     h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
         h(FactRowLabel, {
@@ -127,7 +80,7 @@ const ViewFactRow = connect(
 )
 
 const FactRow = connect(
-    (db, { id }) => ({ viewState: db.find(id, 'viewState') })
+    pull('viewState')
 )(({ id, parentID, viewState }) =>
     h(FactRowContainer, [
         match(viewState, {
@@ -166,14 +119,14 @@ const FactGroupInput = styled(TextForm)`
 `
 
 const EditFactGroup = connect(
-    (db, { id }) => ({ value: db.find(id, 'meta/label') })
-)(({ id, value: initialValue, dispatch }) => h(FactGroupInput, {
+    pull('label')
+)(({ id, label: initialValue, dispatch }) => h(FactGroupInput, {
     initialValue,
     onBlur: (value) => dispatch('updateFactGroup', { id, value }),
     onSubmit: (value) => dispatch('updateFactGroup', { id, value }),
 }))
 
-const ActiveFactGroup = ({ id, viewState, label, items, dispatch }) =>
+const ActiveFactGroup = ({ id, viewState, label, children, dispatch }) =>
     h(Fragment, [
         h(FactGroupContainer, [
             h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
@@ -185,7 +138,7 @@ const ActiveFactGroup = ({ id, viewState, label, items, dispatch }) =>
                         })),
                 ]),
             ]),
-            h(FactList, { data: items }, (childID) =>
+            h(FactList, { data: children }, (childID) =>
                 h(FactRow, { id: childID, parentID: id })),
         ]),
         h(NewFactButton, { onClick: () => dispatch('createFact', { parentID: id }) }, [
@@ -194,12 +147,7 @@ const ActiveFactGroup = ({ id, viewState, label, items, dispatch }) =>
     ])
 
 const FactGroup = connect(
-    (db, { id }) => ({
-        runState: db.find(id, 'runState'),
-        viewState: db.find(id, 'viewState'),
-        label: db.find(id, 'meta/label'),
-        items: db.findAll(id, 'children'),
-    })
+    pull('runState', 'viewState', 'label', 'children')
 )((props) => match(props.runState, {
     active: () => h(ActiveFactGroup, props),
     disabled: () => h(DisabledFactGroup, props),
@@ -236,7 +184,7 @@ const NewListButton = styled.button`
 `
 
 const App = connect(
-    (db) => ({ data: db.where({ 'meta/type': 'fact_group' }) }),
+    (db) => ({ data: db.where({ 'type': 'fact_group' }) }),
 )(({ data, dispatch }) => (
     h(AppBody, [
         h(AppContent, { data }, (id) =>

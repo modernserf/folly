@@ -7,10 +7,16 @@ const cycle = (states, currentState) =>
 export const viewStates = ['view', 'edit']
 export const runStates = ['active', 'disabled']
 
-const factGroup = (l) => ({ 'meta/type': 'fact_group', 'meta/label': l, viewState: 'view', runState: 'active' })
-const fact = (l) => ({ 'meta/type': 'fact', 'meta/label': l, viewState: 'view', runState: 'active' })
+const factGroup = (l = '') => ({ type: 'fact_group', label: l, viewState: 'view', runState: 'active' })
+const fact = (l = '') => ({ type: 'fact', label: l, viewState: 'view', runState: 'active' })
 
-const db = new DB({
+const db = DB.withSchema({
+    type: { type: 'ref' },
+    label: { type: 'string' },
+    viewState: { type: 'ref' },
+    runState: { type: 'ref' },
+    children: { type: 'ref', many: true },
+}, {
     stations: {
         ...factGroup('Stations'),
         children: [
@@ -59,7 +65,7 @@ const rootReducer = createReducer({
     },
     createFactGroup: (db) => {
         const [, next] = db.insert({
-            ...factGroup(''),
+            ...factGroup(),
             viewState: 'edit',
             firstEdit: true,
         })
@@ -69,14 +75,14 @@ const rootReducer = createReducer({
         const children = db.findAll(id, 'children')
         if (db.find(id, 'firstEdit')) {
             let [childID, next] = db.insert({
-                ...fact(''),
+                ...fact(),
                 viewState: 'edit',
             })
             children.push(childID)
             db = next
         }
         return db.patch(id, {
-            'meta/label': value || 'New Group',
+            label: value || 'New Group',
             firstEdit: false,
             viewState: 'view',
             children,
@@ -84,24 +90,24 @@ const rootReducer = createReducer({
     },
     createFact: (db, { parentID }) => {
         const [id, next] = db.insert({
-            ...fact(''),
+            ...fact(),
             viewState: 'edit',
         })
         return next.push([parentID, 'children', id])
     },
     updateFact: (db, { id, value }) => {
         return db.patch(id, {
-            'meta/label': value || 'New Fact',
+            label: value || 'New Fact',
             viewState: 'view',
         })
     },
     updateAndCreateNextFact: (db, { id, parentID, value }) => {
         const next = db.patch(id, {
-            'meta/label': value || 'New Fact',
+            label: value || 'New Fact',
             viewState: 'view',
         })
         const [newID, next2] = next.insert({
-            ...fact(''),
+            ...fact(),
             viewState: 'edit',
         })
 
