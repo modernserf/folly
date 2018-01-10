@@ -3,7 +3,7 @@ import h from 'react-hyperscript'
 import { connect } from 'react-redux'
 import styled from 'styled-components'
 import { Swipeable } from 'react-touch'
-import { List, TextForm, any } from './helpers'
+import { List, TextForm } from './helpers'
 import FactRow from './FactRow'
 
 const FactGroupInput = styled(TextForm)`
@@ -19,11 +19,11 @@ const FactGroupInput = styled(TextForm)`
     background-color: white;
 `
 
-const EditFactGroup = connect()(({ id, dispatch }) => h(FactGroupInput, {
+const EditFactGroup = ({ id, dispatch }) => h(FactGroupInput, {
     initialValue: id,
     onBlur: (value) => dispatch('updateFactGroup', { id, value }),
     onSubmit: (value) => dispatch('updateFactGroup', { id, value }),
-}))
+})
 
 const FactGroupContainer = styled.section`
     padding-bottom: 0.5em;
@@ -62,7 +62,7 @@ const ActiveFactGroup = ({ id, edit, children, dispatch }) =>
             h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
                 h('div', [
                     h(FactGroupHeader, { onClick: () => dispatch('editItem', { id }) }, [
-                        edit ? h(EditFactGroup, { id }) : h('h1', [id]),
+                        edit ? h(EditFactGroup, { id, dispatch }) : h('h1', [id]),
                     ]),
                 ]),
             ]),
@@ -89,8 +89,8 @@ const DisabledFactGroup = ({ id, dispatch }) =>
 const FactGroup = connect(
     (db, { id }) => ({
         children: db.findAll(id, 'children'),
-        disabled: any(db.query(() => [['disabled', id]])),
-        edit: any(db.query(() => [['edit', id]])),
+        disabled: db.query((q) => [q.disabled(id)]).any(),
+        edit: db.query((q) => [q.edit(id)]).any(),
     })
 )((props) => props.disabled ? h(DisabledFactGroup, props) : h(ActiveFactGroup, props))
 

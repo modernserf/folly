@@ -27,7 +27,14 @@ export default class DB {
             },
         }
     }
-    * query (queryFunc) {
+    query (queryFunc) {
+        const gen = this._query(queryFunc)
+        return Object.assign(gen, {
+            all: () => [...gen],
+            any: () => !gen.next().done,
+        })
+    }
+    * _query (queryFunc) {
         const { query, vars } = buildQueryMap(queryFunc)
         for (const endState of this._run(query)) {
             const result = getResult(endState, vars)
@@ -38,15 +45,15 @@ export default class DB {
     where (params) {
         const qf = (q) =>
             Object.entries(params).map(([key, value]) => [q.id, key, value])
-        return [...this.query(qf)].map(r => r.id)
+        return [...this._query(qf)].map(r => r.id)
     }
     find (id, key, defaultValue = null) {
-        const q = this.query(p => [[String(id), key, p.value]])
+        const q = this._query(p => [[String(id), key, p.value]])
         const { value, done } = q.next()
         return done ? defaultValue : value.value
     }
     findAll (id, key) {
-        const q = this.query(p => [[String(id), key, p.value]])
+        const q = this._query(p => [[String(id), key, p.value]])
         return [...q].map(r => r.value)
     }
     pull (id, keys) {
@@ -192,6 +199,7 @@ function buildQueryMap (queryFunc) {
 }
 function createRule (fn) {
     const [head, ...body] = buildQueryMap(fn).query
+    console.log(head)
     return {
         index: head,
         run: function * (db, query, state) {

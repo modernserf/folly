@@ -2,7 +2,7 @@ import h from 'react-hyperscript'
 import { connect } from 'react-redux'
 import styled from 'styled-components'
 import { Swipeable } from 'react-touch'
-import { any, Autocomplete, TextForm } from './helpers'
+import { Autocomplete, TextForm } from './helpers'
 
 const FloatingAutocomplete = styled(Autocomplete)`
     position:fixed;
@@ -37,10 +37,7 @@ const FactInput = styled(TextForm)`
 
 const EditFactRow = connect(
     (db, { id }) => ({
-        options: [...db.query((q) => [
-            [q.parent, 'type', 'fact_group'],
-            [q.parent, 'children', q.id],
-        ])].map(({ id }) => ({ id, label: id })),
+        options: db.query((q) => [q.known_atom(q.id)]).all().map(({ id }) => ({ id, label: id })),
     }),
 )(({ id, parentID, initialValue, options, dispatch }) => h(FactInput, {
     initialValue: id,
@@ -59,7 +56,7 @@ const FactRowLabel = styled.div`
 
 const ViewFactRow = connect(
     (db, { id, parentID }) => ({
-        disabled: any(db.query(() => [['disabled', parentID, id]])),
+        disabled: db.query((q) => q.disabled(parentID, id)).any(),
     })
 )(({ id, parentID, disabled, dispatch }) =>
     h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { parentID, id }) }, [
@@ -74,7 +71,9 @@ const FactRowContainer = styled.div`
 `
 
 const FactRow = connect(
-    (db, { parentID, id }) => ({ edit: any(db.query(() => [['edit', parentID, id]])) }),
+    (db, { parentID, id }) => ({
+        edit: db.query((q) => [q.edit(parentID, id)]).any(),
+    }),
 )(({ id, parentID, edit }) =>
     h(FactRowContainer, [
         edit ? h(EditFactRow, { id, parentID }) : h(ViewFactRow, { id, parentID }),

@@ -20,10 +20,13 @@ const db = DB.withSchema({
         children: ['Red', 'Green', 'Blue', 'Orange'],
     },
 },
-['disabled', 'Stations', 'Davis'],
-['edit', 'Stations', 'Porter'],
-['disabled', 'Lines']
-)
+(q) => q.disabled('Stations', 'Davis').if(),
+(q) => q.disabled('Lines').if(),
+(q) => q.edit('Stations', 'Porter').if(),
+(q) => q.known_atom(q.id).if(
+    q.type(q.parent, 'fact_group'),
+    q.children(q.parent, q.id)
+))
 
 window.db = db
 
