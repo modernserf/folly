@@ -1,7 +1,9 @@
 import { Component, Fragment } from 'react'
 import h from 'react-hyperscript'
+import PropTypes from 'prop-types'
 import { Provider, connect } from 'react-redux'
 import styled from 'styled-components'
+import omit from 'lodash/omit'
 import { Swipeable } from 'react-touch'
 import { store } from './data'
 import './App.css'
@@ -49,7 +51,47 @@ const FactRowLabel = styled.div`
     color: ${({ runState }) => runState === 'disabled' ? '#ccc' : 'black'};
 `
 
-const FactInput = styled.input`
+class TextForm extends Component {
+    static propTypes = {
+        initialValue: PropTypes.string,
+        onSubmit: PropTypes.func.isRequired,
+        onBlur: PropTypes.func.isRequired,
+    }
+    state = {
+        value: '',
+    }
+    componentDidMount () {
+        this.setState({ value: this.props.initialValue })
+        this.input.focus()
+        setTimeout(() => this.input.select(), 1)
+    }
+    setRef = (el) => {
+        this.input = el
+    }
+    onSubmit = (e) => {
+        e.preventDefault()
+        this.props.onSubmit(this.state.value)
+    }
+    onBlur = () => {
+        this.props.onBlur(this.state.value)
+    }
+    onChange = (e) => {
+        this.setState({ value: e.target.value })
+    }
+    render () {
+        const { value = '' } = this.state
+        const { onSubmit, onBlur, onChange } = this
+        const containerProps = Object.assign(
+            omit(this.props, ['onSubmit', 'onBlur', 'initialValue']),
+            { ref: this.setRef, value, onChange, onBlur })
+
+        return h('form', { onSubmit }, [
+            h('input', containerProps),
+        ])
+    }
+}
+
+const FactInput = styled(TextForm)`
     display: block;
     width: 100%;
     border: 0;
@@ -64,40 +106,11 @@ const FactInput = styled.input`
 
 const EditFactRow = connect(
     (db, { id }) => ({ value: db.find(id, 'meta/label') })
-)(class EditFactRow extends Component {
-    state = {
-        value: '',
-    }
-    componentDidMount () {
-        this.setState({ value: this.props.value })
-        this.input.focus()
-        setTimeout(() => this.input.select(), 1)
-    }
-    updateFact = () => {
-        this.props.dispatch('updateFact', { value: this.state.value, id: this.props.id })
-    }
-    createAndNext = (e) => {
-        e.preventDefault()
-        this.props.dispatch('updateAndCreateNextFact', {
-            value: this.state.value,
-            id: this.props.id,
-            parentID: this.props.parentID,
-        })
-    }
-    setBuffer = (e) => {
-        this.setState({ value: e.target.value })
-    }
-    render () {
-        return h('form', { onSubmit: this.createAndNext }, [
-            h(FactInput, {
-                innerRef: (el) => { this.input = el },
-                value: this.state.value || '',
-                onChange: this.setBuffer,
-                onBlur: this.updateFact,
-            }),
-        ])
-    }
-})
+)(({ id, parentID, value: initialValue, dispatch }) => h(FactInput, {
+    initialValue,
+    onBlur: (value) => dispatch('updateFact', { value, id }),
+    onSubmit: (value) => dispatch('updateAndCreateNextFact', { value, id, parentID }),
+}))
 
 const ViewFactRow = connect(
     (db, { id }) => ({
@@ -139,7 +152,7 @@ const DisabledFactGroup = ({ id, label, dispatch }) =>
         ]),
     ])
 
-const FactGroupInput = styled.input`
+const FactGroupInput = styled(TextForm)`
     display: block;
     width: 100%;
     border: 0;
@@ -154,32 +167,11 @@ const FactGroupInput = styled.input`
 
 const EditFactGroup = connect(
     (db, { id }) => ({ value: db.find(id, 'meta/label') })
-)(class EditFactGroup extends Component {
-    state = {
-        value: '',
-    }
-    componentDidMount () {
-        this.setState({ value: this.props.value })
-        this.input.focus()
-        setTimeout(() => this.input.select(), 1)
-    }
-    updateGroup = () => {
-        this.props.dispatch('updateFactGroup', { value: this.state.value, id: this.props.id })
-    }
-    setBuffer = (e) => {
-        this.setState({ value: e.target.value })
-    }
-    render () {
-        return h('form', { onSubmit: (e) => { e.preventDefault(); this.updateGroup() } }, [
-            h(FactGroupInput, {
-                innerRef: (el) => { this.input = el },
-                value: this.state.value || '',
-                onChange: this.setBuffer,
-                onBlur: this.updateGroup,
-            }),
-        ])
-    }
-})
+)(({ id, value: initialValue, dispatch }) => h(FactGroupInput, {
+    initialValue,
+    onBlur: (value) => dispatch('updateFactGroup', { id, value }),
+    onSubmit: (value) => dispatch('updateFactGroup', { id, value }),
+}))
 
 const ActiveFactGroup = ({ id, viewState, label, items, dispatch }) =>
     h(Fragment, [
