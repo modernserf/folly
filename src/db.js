@@ -1,4 +1,3 @@
-import shortid from 'shortid'
 const _value = Symbol('_value')
 const _rest = Symbol('_rest')
 
@@ -32,6 +31,7 @@ export default class DB {
         return Object.assign(gen, {
             all: () => [...gen],
             any: () => !gen.next().done,
+            chain: () => this,
         })
     }
     * _query (queryFunc) {
@@ -73,27 +73,16 @@ export default class DB {
     }
 
     // adding data
-    push (...data) {
-        const next = this._clone()
-        next.rules.push(...createRules(...data))
-        return next
+    push (data) {
+        this.rules.push(...createRules(data))
+        return this
     }
-    insert (data) {
-        const id = shortid.generate()
-        const next = this._clone()
-        next.rules.push(...createRules({ [id]: data }))
-        return [id, next]
+    retractAll (queryFunc) {
+        const [head] = buildQueryMap(queryFunc).query
+        this.rules = this.rules.filter((rule) => !unify({}, rule.index, head))
+        return this
     }
-    patch (id, data) {
-        const keys = Object.keys(data)
-        const next = this._clone()
-        next.rules = this.rules.filter(({ index: [rid, rkey] }) =>
-            rid !== id || !keys.includes(rkey))
-
-        next.rules.push(...createRules({ [id]: data }))
-        return next
-    }
-    _clone () {
+    clone () {
         return Object.assign(new DB(), this)
     }
 
@@ -197,9 +186,9 @@ function buildQueryMap (queryFunc) {
             : rule)
     return { vars, query }
 }
+
 function createRule (fn) {
     const [head, ...body] = buildQueryMap(fn).query
-    console.log(head)
     return {
         index: head,
         run: function * (db, query, state) {

@@ -49,7 +49,7 @@ export class TextForm extends Component {
     onBlur = () => {
         this.blurTimeout = setTimeout(() => {
             this.props.onBlur(this.state.value)
-        }, 1000)
+        }, 100)
     }
     onChange = (e) => {
         this.setState({ value: e.target.value })

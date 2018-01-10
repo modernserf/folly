@@ -1,34 +1,36 @@
 import { createStore } from 'redux'
+import shortid from 'shortid'
 import DB from './db'
 
 export const viewStates = ['view', 'edit']
 export const runStates = ['active', 'disabled']
 
+// TODO: fact groups are _entitites_ (ie. they can be renamed, though a valid program has unique names)
+// TODO: name collisions can be reconcilled by renaming, deleting, merging
+
 const db = DB.withSchema({
     type: { type: 'ref' },
+    label: { type: 'string' },
     children: { type: 'ref', many: true },
 }, {
-    Stations: {
+    [shortid.generate()]: {
         type: 'fact_group',
+        label: 'Stations',
         children: [
             'Alewife', 'Davis', 'Porter', 'Harvard', 'Central', 'Kendall/MIT', 'Charles/MGH',
             'Park St', 'Downtown Crossing', 'South Station', 'Broadway', 'Andrew', 'JFK/UMass',
         ],
     },
-    Lines: {
+    [shortid.generate()]: {
         type: 'fact_group',
+        label: 'Lines',
         children: ['Red', 'Green', 'Blue', 'Orange'],
     },
 },
-(q) => q.disabled('Stations', 'Davis').if(),
-(q) => q.disabled('Lines').if(),
-(q) => q.edit('Stations', 'Porter').if(),
 (q) => q.known_atom(q.id).if(
     q.type(q.parent, 'fact_group'),
     q.children(q.parent, q.id)
 ))
-
-window.db = db
 
 const createReducer = (map, initState) => (state = initState, action) => {
     if (map[action.type]) {
@@ -38,66 +40,59 @@ const createReducer = (map, initState) => (state = initState, action) => {
 }
 
 const rootReducer = createReducer({
-    // // both facts and groups
-    // editItem: (db, { id }) =>
-    //     db.patch(id, { viewState: 'edit' }),
-    // disableItem: (db, { id }) => {
-    //     const prevState = db.find(id, 'runState')
-    //     return db.patch(id, { runState: cycle(runStates, prevState) })
-    // },
-    // createFactGroup: (db) => {
-    //     const [, next] = db.insert({
-    //         ...factGroup(),
-    //         viewState: 'edit',
-    //         firstEdit: true,
-    //     })
-    //     return next
-    // },
-    // updateFactGroup: (db, { value, id }) => {
-    //     const children = db.findAll(id, 'children')
-    //     if (db.find(id, 'firstEdit')) {
-    //         let [childID, next] = db.insert({
-    //             ...fact(),
-    //             viewState: 'edit',
-    //         })
-    //         children.push(childID)
-    //         db = next
-    //     }
-    //     return db.patch(id, {
-    //         label: value || 'New Group',
-    //         firstEdit: false,
-    //         viewState: 'view',
-    //         children,
-    //     })
-    // },
-    // createFact: (db, { parentID }) => {
-    //     const [id, next] = db.insert({
-    //         ...fact(),
-    //         viewState: 'edit',
-    //     })
-    //     return next.push([parentID, 'children', id])
-    // },
-    // updateFact: (db, { id, value }) => {
-    //     return db.patch(id, {
-    //         label: value || 'New Fact',
-    //         viewState: 'view',
-    //     })
-    // },
-    // updateAndCreateNextFact: (db, { id, parentID, value }) => {
-    //     const next = db.patch(id, {
-    //         label: value || 'New Fact',
-    //         viewState: 'view',
-    //     })
-    //     const [newID, next2] = next.insert({
-    //         ...fact(),
-    //         viewState: 'edit',
-    //     })
-    //
-    //     return next2.push([parentID, 'children', newID])
-    // },
+    editItem: (db, { id, parentID }) => db
+        .retractAll((q) => [q.edit(q._)])
+        .push((q) => [q.edit(parentID ? q.children(parentID, id) : id)])
+        .clone(),
+    disableItem: (db, { id, parentID }) => db
+        .push((q) => [q.disabled(parentID ? q.children(parentID, id) : id)])
+        .clone(),
+    enableItem: (db, { id, parentID }) => db
+        .retractAll((q) => [q.disabled(parentID ? q.children(parentID, id) : id)])
+        .clone(),
+    createFactGroup: (db) => {
+        const id = shortid.generate()
+        return db.push({ [id]: { type: 'fact_group', label: 'New Group', firstEdit: true } })
+            .retractAll((q) => [q.edit(q._)])
+            .push((q) => [q.edit(id)])
+            .clone()
+    },
+    updateFactGroup: (db, { value, id }) => {
+        db.retractAll((q) => [q.label(id, q._)])
+            .retractAll((q) => [q.edit(q._)])
+            .push((q) => [q.label(id, value)])
+        if (db.find(id, 'firstEdit')) {
+            db.retractAll((q) => q.firstEdit(id, q._))
+                .push((q) => [q.children(id, 'New Fact')])
+                .push((q) => [q.edit(q.children(id, 'New Fact'))])
+        }
+        return db.clone()
+    },
+    // TODO: ought to handle empty string as a valid atom
+    createFact: (db, { parentID }) => db
+        .retractAll((q) => [q.edit(q._)])
+        .push((q) => [q.children(parentID, 'New Fact')])
+        .push((q) => [q.edit(q.children(parentID, 'New Fact'))])
+        .clone(),
+    // TODO: this should (?) preserve order
+    // if so, then order needs to be explicit
+    // also: duplicates
+    updateFact: (db, { parentID, id, value }) => db
+        .retractAll((q) => [q.edit(q._)])
+        .retractAll((q) => [q.children(parentID, id)])
+        .push((q) => [q.children(parentID, value)])
+        .clone(),
+    updateAndCreateNextFact: (db, { id, parentID, value }, action) => console.log(action) || db
+        .retractAll((q) => [q.edit(q._)])
+        .retractAll((q) => [q.children(parentID, id)])
+        .push((q) => [q.children(parentID, value)])
+        .push((q) => [q.children(parentID, 'New Fact')])
+        .push((q) => [q.edit(q.children(parentID, 'New Fact'))])
+        .clone(),
 }, db)
 
 export const store = createStore(rootReducer)
+Object.defineProperty(window, 'db', { get: () => store.getState() })
 
 const _dispatch = store.dispatch
 store.dispatch = (type, payload) => {

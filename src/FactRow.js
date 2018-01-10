@@ -39,9 +39,9 @@ const EditFactRow = connect(
     (db, { id }) => ({
         options: db.query((q) => [q.known_atom(q.id)]).all().map(({ id }) => ({ id, label: id })),
     }),
-)(({ id, parentID, initialValue, options, dispatch }) => h(FactInput, {
+)(({ id, parentID, options, dispatch }) => h(FactInput, {
     initialValue: id,
-    onBlur: (value) => dispatch('updateFact', { value, id, parentID }),
+    // onBlur: (value) => dispatch('updateFact', { value, id, parentID }),
     onSubmit: (value) => dispatch('updateAndCreateNextFact', { value, id, parentID }),
 }, ({ value }) => h(FloatingAutocomplete, {
     value,
@@ -56,10 +56,10 @@ const FactRowLabel = styled.div`
 
 const ViewFactRow = connect(
     (db, { id, parentID }) => ({
-        disabled: db.query((q) => q.disabled(parentID, id)).any(),
+        disabled: db.query((q) => [q.disabled(q.children(parentID, id))]).any(),
     })
 )(({ id, parentID, disabled, dispatch }) =>
-    h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { parentID, id }) }, [
+    h(Swipeable, { onSwipeLeft: () => dispatch(disabled ? 'enableItem' : 'disableItem', { parentID, id }) }, [
         h(FactRowLabel, {
             disabled,
             onClick: () => dispatch('editItem', { parentID, id }),
@@ -72,7 +72,7 @@ const FactRowContainer = styled.div`
 
 const FactRow = connect(
     (db, { parentID, id }) => ({
-        edit: db.query((q) => [q.edit(parentID, id)]).any(),
+        edit: db.query((q) => [q.edit(q.children(parentID, id))]).any(),
     }),
 )(({ id, parentID, edit }) =>
     h(FactRowContainer, [

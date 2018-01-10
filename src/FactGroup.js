@@ -19,8 +19,8 @@ const FactGroupInput = styled(TextForm)`
     background-color: white;
 `
 
-const EditFactGroup = ({ id, dispatch }) => h(FactGroupInput, {
-    initialValue: id,
+const EditFactGroup = ({ id, label, dispatch }) => h(FactGroupInput, {
+    initialValue: label,
     onBlur: (value) => dispatch('updateFactGroup', { id, value }),
     onSubmit: (value) => dispatch('updateFactGroup', { id, value }),
 })
@@ -56,13 +56,13 @@ const NewFactButton = styled.button`
     text-decoration: underline;
 `
 
-const ActiveFactGroup = ({ id, edit, children, dispatch }) =>
+const ActiveFactGroup = ({ id, label, edit, children, dispatch }) =>
     h(Fragment, [
         h(FactGroupContainer, [
             h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
                 h('div', [
                     h(FactGroupHeader, { onClick: () => dispatch('editItem', { id }) }, [
-                        edit ? h(EditFactGroup, { id, dispatch }) : h('h1', [id]),
+                        edit ? h(EditFactGroup, { id, label, dispatch }) : h('h1', [label]),
                     ]),
                 ]),
             ]),
@@ -79,16 +79,16 @@ const DisabledFactGroupHeader = styled(BaseHeader)`
     background-color: gray;
 `
 
-const DisabledFactGroup = ({ id, dispatch }) =>
-    h(Swipeable, { onSwipeLeft: () => dispatch('disableItem', { id }) }, [
+const DisabledFactGroup = ({ id, label, dispatch }) =>
+    h(Swipeable, { onSwipeLeft: () => dispatch('enableItem', { id }) }, [
         h('div', [
-            h(DisabledFactGroupHeader, [h('h1', id)]),
+            h(DisabledFactGroupHeader, [h('h1', label)]),
         ]),
     ])
 
 const FactGroup = connect(
     (db, { id }) => ({
-        children: db.findAll(id, 'children'),
+        ...db.pull(id, ['label', 'children']),
         disabled: db.query((q) => [q.disabled(id)]).any(),
         edit: db.query((q) => [q.edit(id)]).any(),
     })
