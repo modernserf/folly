@@ -3,9 +3,11 @@ import h from 'react-hyperscript'
 import PropTypes from 'prop-types'
 import omit from 'lodash/omit'
 
+export const any = (q) => !![...q].length
+
 export const List = ({ data, children, ...props }) =>
     h('ul', props, data.map((d) =>
-        h('li', { key: d.id }, children(d))))
+        h('li', { key: (d.id || d) }, children(d))))
 
 export const Autocomplete = ({ value, options, onChange, ...props }) => {
     const re = new RegExp(value.split('').join('.*'), 'i')
