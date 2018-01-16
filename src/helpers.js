@@ -68,3 +68,26 @@ export class TextForm extends Component {
         ])
     }
 }
+
+export class ContentEditable extends Component {
+    static defaultProps = {
+        onChange: () => {},
+    }
+    setNode = (node) => {
+        this.node = node
+    }
+    onChange = (e) => {
+        this.props.onChange(this.node.innerHTML, e)
+    }
+    render () {
+        const { value, ...props } = this.props
+        return h('div', {
+            contentEditable: true,
+            ref: this.setNode,
+            onInput: this.onChange,
+            onBlur: this.onChange,
+            dangerouslySetInnerHTML: { __html: value },
+            ...props,
+        })
+    }
+}
