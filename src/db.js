@@ -1,126 +1,109 @@
-const _value = Symbol('_value')
-const _rest = Symbol('_rest')
+import mapValues from 'lodash/mapValues'
+import groupBy from 'lodash/groupBy'
+
+const fun = (x) => typeof x === 'function'
+const sym = (x) => typeof x === 'symbol'
+const arr = (x) => Array.isArray(x)
+const obj = (x) => x && typeof x === 'object'
+const selector = (x) => {
+    if (fun(x)) { return selector(x({})[0]) }
+    return Object.keys(x).sort().join(',')
+}
 
 export default class DB {
-    constructor (...data) {
-        this.rules = [].concat(...data.map((d) => [...createRules(d)]))
+    static RUN = Symbol('RUN')
+    static list (...args) {
+        return args.reduceRight((tail, value) => [value, tail])
     }
-    static withSchema (schema, ...rulesets) {
-        const db = new DB(...rulesets)
-        db.schema = schema
-        return db
-    }
-    static assert (...vars) {
-        const f = vars.pop()
-        return {
-            runQuery: function * (self, state) {
-                self._log('runQuery', vars)
-                const args = vars.map((v) => {
-                    const value = lookup(state, val(v))
-                    if (sym(value)) {
-                        throw new Error('Arguments to `DB.assert` must be fully instantiated')
-                    }
-                    return value
-                })
-                if (f(...args)) { yield state }
-            },
-        }
+    constructor (rules) {
+        this.rules = rules
+        this._buildIndex()
     }
     query (queryFunc) {
         const gen = this._query(queryFunc)
         return Object.assign(gen, {
             all: () => [...gen],
+            one: () => gen.next().value,
             any: () => !gen.next().done,
-            chain: () => this,
         })
     }
     * _query (queryFunc) {
-        const { query, vars } = buildQueryMap(queryFunc)
-        for (const endState of this._run(query)) {
-            const result = getResult(endState, vars)
+        const { query, labelsToVars } = buildQueryMap(queryFunc)
+        const initialState = {}
+        for (const endState of this._run(query, initialState)) {
+            const result = lookup(endState, labelsToVars)
             if (result) { yield result }
         }
     }
-
-    where (params) {
-        const qf = (q) =>
-            Object.entries(params).map(([key, value]) => [q.id, key, value])
-        return [...this._query(qf)].map(r => r.id)
-    }
-    find (id, key, defaultValue = null) {
-        const q = this._query(p => [[String(id), key, p.value]])
-        const { value, done } = q.next()
-        return done ? defaultValue : value.value
-    }
-    findAll (id, key) {
-        const q = this._query(p => [[String(id), key, p.value]])
-        return [...q].map(r => r.value)
-    }
-    pull (id, keys) {
-        return keys.reduce((m, key) => {
-            if (typeof key === 'object') {
-                for (const [childRel, childKeys] of Object.entries(key)) {
-                    const childIDs = this.findAll(id, childRel)
-                    m[childRel] = childIDs.map(cid => this.pull(cid, childKeys))
-                }
-            } else if ((this.schema[key] || {}).many) {
-                m[key] = this.findAll(id, key)
-            } else {
-                m[key] = this.find(id, key)
+    * _run (queries, state) {
+        if (!queries.length) { yield state; return }
+        const [query, ...restQueries] = queries
+        // for each rule
+        for (const rule of this._matchingRules(query)) {
+            // for every unifying next state
+            for (const nextState of this._runRule(state, query, rule)) {
+                yield * this._run(restQueries, nextState)
             }
-            return m
-        }, {})
-    }
-
-    // adding data
-    push (data) {
-        this.rules.push(...createRules(data))
-        return this
-    }
-    retractAll (queryFunc) {
-        const [head] = buildQueryMap(queryFunc).query
-        this.rules = this.rules.filter((rule) => !unify({}, rule.index, head))
-        return this
-    }
-    clone () {
-        return Object.assign(new DB(), this)
-    }
-
-    * _run ([query, ...restQueries], state = {}) {
-        if (!query) { yield state; return }
-        for (let nextState of this._matchRules(query, state)) {
-            this._log('match', query, nextState)
-            yield * this._run(restQueries, nextState)
         }
     }
-    * _matchRules (query, state) {
-        if (query.runQuery) {
-            yield * query.runQuery(this, state)
+    * _runRule (state, query, rule) {
+        // special rule implementation (dif)
+        if (rule[DB.RUN]) {
+            yield * rule[DB.RUN](state, query)
+        // normal rule
+        } else if (fun(rule)) {
+            const [head, ...body] = buildQueryMap(rule).query
+            const nextState = unify(state, head, query)
+            if (nextState) { yield * this._run(body, nextState) }
+        // normal fact
         } else {
-            for (let rule of this.rules) {
-                yield * rule.run(this, query, state)
-            }
+            const nextState = unify(state, query, rule)
+            if (nextState) { yield nextState }
         }
     }
-    _log (...args) {}
-    trace () {
-        this._log = (...args) => {
-            console.log(...args)
-        }
+    _matchingRules (query) {
+        return this._index[selector(query)] || []
+    }
+    _buildIndex () {
+        this._index = groupBy([...this.rules], selector)
+        this._index['it,not'] = [{ [DB.RUN]: dif }]
     }
 }
 
-function val (x) { return x[_value] || x }
-// function rest (x) { return x[_rest] }
-function sym (x) { return typeof x === 'symbol' }
-function set (state, k, v) { return Object.assign({}, state, { [k]: v }) }
+function buildQueryMap (queryFunc) {
+    const labelsToVars = new Proxy({}, {
+        get: (target, name) => {
+            if (!target[name]) {
+                target[name] = Symbol(name)
+            }
+            return target[name]
+        },
+    })
+    const query = queryFunc(labelsToVars)
+    return { labelsToVars, query }
+}
+
+const set = (state, k, v) => ({ ...state, [k]: v })
+
 function lookup (state, v) {
     if (sym(v) && state[v]) { return lookup(state, state[v]) }
-    if (Array.isArray(v)) { return v.map((x) => lookup(state, x)) }
+    if (arr(v)) { return v.map((x) => lookup(state, x)) }
+    if (obj(v)) { return mapValues(v, (x) => lookup(state, x)) }
     return v
 }
+
+const CONSTRAINTS = Symbol('CONSTRAINTS')
 function unify (state, lhs, rhs) {
-    // console.log('unify', lhs, rhs)
+    const nextState = _unify(state, lhs, rhs)
+    if (!nextState) { return null }
+
+    for (const constraint of nextState[CONSTRAINTS] || []) {
+        if (!constraint(nextState)) { return null }
+    }
+    return nextState
+}
+
+function _unify (state, lhs, rhs) {
     lhs = lookup(state, lhs)
     rhs = lookup(state, rhs)
 
@@ -129,99 +112,41 @@ function unify (state, lhs, rhs) {
     // new binding
     if (sym(lhs)) { return set(state, lhs, rhs) }
     if (sym(rhs)) { return set(state, rhs, lhs) }
+
     // array
-    if (Array.isArray(lhs) && Array.isArray(rhs)) {
-        if (!lhs.length && !rhs.length) { return state }
-        if (!lhs.length || !rhs.length) { return null }
-
-        const [l, ..._lhs] = lhs
-        const [r, ..._rhs] = rhs
-
-        const nextState = unify(state, l, r)
-        if (!nextState) { return null }
-        return unify(nextState, _lhs, _rhs)
+    if (arr(lhs) && arr(rhs)) {
+        if (lhs.length !== rhs.length) { return null }
+        let nextState = state
+        for (let i = 0; i < lhs.length; i++) {
+            nextState = unify(nextState, lhs[i], rhs[i])
+            if (!nextState) { return null }
+        }
+        return nextState
     }
-    // mismatch
+    // object
+    if (obj(lhs) && obj(rhs)) {
+        if (selector(lhs) !== selector(rhs)) { return null }
+        let nextState = state
+        for (const key in lhs) {
+            nextState = unify(nextState, lhs[key], rhs[key])
+            if (!nextState) { return null }
+        }
+        return nextState
+    }
     return null
 }
-function getResult (state, vars) {
-    if (!state) { return null }
-    return Object.keys(vars).reduce((m, v) => {
-        const val = lookup(state, vars[v])
-        if (!sym(val)) { m[v] = val }
-        return m
-    }, {})
-}
-function createVarBuilder (name, sym) {
-    function varBuilder (id, ...params) {
-        const arr = [id, name, ...params]
-        arr.if = function (...rules) {
-            return [arr].concat(rules)
-        }
-        return arr
-    }
-    varBuilder[Symbol.iterator] = function * () {
-        yield { [_rest]: sym }
-    }
-    varBuilder[_value] = sym
-    return varBuilder
-}
-function buildQueryMap (queryFunc) {
-    const vars = {}
-    const q = new Proxy({}, {
-        get: (target, name) => {
-            if (!target[name]) {
-                const sym = Symbol(name)
-                target[name] = createVarBuilder(name, sym)
-                vars[name] = sym
-            }
-            return target[name]
-        },
-    })
 
-    const query = queryFunc(q).map((rule) =>
-        Array.isArray(rule)
-            ? rule.map((x) =>
-                Array.isArray(x) ? x.map(val) : val(x))
-            : rule)
-    return { vars, query }
-}
+function * dif (prevState, query) {
+    const head = { it: Symbol('it'), not: Symbol('not') }
+    const nextState = { ...prevState }
+    nextState[CONSTRAINTS] = (prevState[CONSTRAINTS] || []).concat([
+        (state) => {
+            // TODO: dif data structures
+            return lookup(state, head.it) !== lookup(state, head.not)
+        },
+    ])
 
-function createRule (fn) {
-    const [head, ...body] = buildQueryMap(fn).query
-    return {
-        index: head,
-        run: function * (db, query, state) {
-            db._log('rule', head, state, '\nquery', query)
-            const nextState = unify(state, head, query)
-            if (nextState) { yield * db._run(body, nextState) }
-        },
-    }
-}
-function createFact (fact) {
-    return {
-        index: fact,
-        run: function * (db, query, state) {
-            db._log('fact', fact, state)
-            const nextState = unify(state, fact, query)
-            if (nextState) { yield nextState }
-        },
-    }
-}
-function * createRules (data) {
-    if (Array.isArray(data)) {
-        yield createFact(data)
-    } else if (typeof data === 'function') {
-        yield createRule(data)
-    } else {
-        for (const [id, entry] of Object.entries(data)) {
-            for (const [key, value] of Object.entries(entry)) {
-                if (Array.isArray(value)) {
-                    yield * value.map((v) => createFact([id, key, v]))
-                } else {
-                    yield createFact([id, key, value])
-                }
-            }
-        }
-    }
+    const endState = unify(nextState, head, query)
+    if (!endState) { return }
+    yield endState
 }
