@@ -49,7 +49,7 @@ export default class DB {
     * _runRule (state, query, rule) {
         // special rule implementation (dif)
         if (rule[DB.RUN]) {
-            yield * rule[DB.RUN](state, query)
+            yield * rule[DB.RUN](state, query, this)
         // normal rule
         } else if (fun(rule)) {
             const [head, ...body] = buildQueryMap(rule).query
@@ -67,6 +67,7 @@ export default class DB {
     _buildIndex () {
         this._index = groupBy([...this.rules], selector)
         this._index['it,not'] = [{ [DB.RUN]: dif }]
+        this._index.call = [{ [DB.RUN]: call }]
     }
 }
 
@@ -149,4 +150,11 @@ function * dif (prevState, query) {
     const endState = unify(nextState, head, query)
     if (!endState) { return }
     yield endState
+}
+
+function * call (prevState, query, db) {
+    const head = { call: Symbol('call') }
+    const nextState = unify(prevState, head, query)
+    const calledRule = lookup(nextState, head.call)
+    yield * db._run([calledRule], nextState)
 }

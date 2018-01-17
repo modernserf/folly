@@ -134,3 +134,18 @@ it('subway route', () => {
         ['State Street', 'Aquarium'],
     ])
 })
+
+it('call/1', () => {
+    const db = new DB([
+        { foo: 1 },
+        { foo: 2 },
+    ])
+
+    expect(db.query((q) => [
+        { call: { foo: 1 } },
+    ]).any()).toBe(true)
+
+    expect(db.query((q) => [
+        { call: { foo: 100 } },
+    ]).any()).toBe(false)
+})
