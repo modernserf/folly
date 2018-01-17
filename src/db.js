@@ -12,11 +12,8 @@ const selector = (x) => {
 
 export default class DB {
     static RUN = Symbol('RUN')
-    static list (...args) {
-        return args.reduceRight((tail, value) => [value, tail])
-    }
     constructor (rules) {
-        this.rules = rules
+        this.rules = rules.map(ingest)
         this._buildIndex()
     }
     query (queryFunc) {
@@ -32,7 +29,7 @@ export default class DB {
         const initialState = {}
         for (const endState of this._run(query, initialState)) {
             const result = lookup(endState, labelsToVars)
-            if (result) { yield result }
+            if (result) { yield format(result) }
         }
     }
     * _run (queries, state) {
@@ -80,7 +77,7 @@ function buildQueryMap (queryFunc) {
             return target[name]
         },
     })
-    const query = queryFunc(labelsToVars)
+    const query = queryFunc(labelsToVars).map(ingest)
     return { labelsToVars, query }
 }
 
@@ -91,6 +88,34 @@ function lookup (state, v) {
     if (arr(v)) { return v.map((x) => lookup(state, x)) }
     if (obj(v)) { return mapValues(v, (x) => lookup(state, x)) }
     return v
+}
+
+function ingest (form) {
+    if (arr(form)) {
+        return form.reduceRight((ll, item) => ({ head: ingest(item), tail: ll }), [])
+    } else if (obj(form)) {
+        return mapValues(form, ingest)
+    } else {
+        return form
+    }
+}
+
+function format (result) {
+    // format { head, tail } linked list as array
+    if (result.head && result.tail) {
+        if (arr(result.tail) && result.tail.length === 0) {
+            return [format(result.head)]
+        } else {
+            return [
+                format(result.head),
+                ...format(result.tail),
+            ]
+        }
+    } else if (obj(result)) {
+        return mapValues(result, format)
+    } else {
+        return result
+    }
 }
 
 const CONSTRAINTS = Symbol('CONSTRAINTS')
