@@ -13,22 +13,25 @@ const actions = [
     'next_unbound', // "     next "
     'in', // select first field of focused term
     'out', // select enclosing term
-]
+].map((key) => [key, () => ({ type: key })])
+
+const head = (xs) => xs[0]
+const tail = (xs) => xs.slice(1)
+const most = (xs) => xs.slice(0, -1)
+const last = (xs) => xs[xs.length - 1]
 
 const traverse = (data, path) =>
-    path.length ? traverse(data[path[0]], path.slice(1)) : data
+    path.length ? traverse(data[head(path)], tail(path)) : data
 
 const findNextNode = (path, data, offset) => {
     if (!path.length) { return [] }
-    const most = path.slice(0, -1)
-    const last = path[path.length - 1]
-    const keys = Object.keys(traverse(data, most))
-    const idx = keys.indexOf(last)
+    const keys = Object.keys(traverse(data, most(path)))
+    const idx = keys.indexOf(last(path))
     const nextKey = keys[idx + offset]
     if (nextKey) {
-        return most.concat(nextKey)
+        return most(path).concat([nextKey])
     } else {
-        return findNextNode(most, data, offset)
+        return findNextNode(most(path), data, offset)
     }
 }
 
@@ -36,7 +39,7 @@ const firstLeaf = (data, path, offset) => {
     const val = traverse(data, path)
     if (typeof val === 'object') {
         const keys = Object.keys(val)
-        const nextKey = offset > 0 ? keys[0] : keys[keys.length - 1]
+        const nextKey = offset > 0 ? head(keys) : last(keys)
         return firstLeaf(data, path.concat([nextKey]), offset)
     } else {
         return path
@@ -68,9 +71,9 @@ const findNextUndefined = (path, data, offset) => {
     }
 }
 
-function reducer (state, data, action) {
+function reducer (state, data, { type, payload }) {
     const val = traverse(data, state)
-    switch (action) {
+    switch (type) {
     case 'prev': {
         return findNextNode(state, data, -1)
     }
@@ -141,22 +144,7 @@ const Tree = ({ data, path }) => {
 class Editor extends Component {
     state = {
         path: [],
-    }
-    onAction = (action) => {
-        this.setState((state) => ({ path: reducer(state.path, this.props.data, action) }))
-    }
-    render () {
-        return h('div', [
-            h(Tree, { data: this.props.data, path: this.state.path }),
-            h('div', actions.map((button) =>
-                h('button', { key: button, onClick: () => this.onAction(button) }, [button]))),
-        ])
-    }
-}
-
-storiesOf('Editor', module)
-    .add('selection', () => {
-        const data = {
+        data: {
             foo: {
                 bar: [1, 2, undefined, 4],
             },
@@ -164,6 +152,22 @@ storiesOf('Editor', module)
                 { id: 1, label: undefined },
                 { id: 2, label: 'baz 2' },
             ],
-        }
-        return h(Editor, { data })
+        },
+    }
+    onAction = (action) => {
+        this.setState((state) => ({ path: reducer(state.path, state.data, action) }))
+    }
+    render () {
+        const { path, data } = this.state
+        return h('div', [
+            h(Tree, { path, data }),
+            h('div', actions.map(([label, handler]) =>
+                h('button', { key: label, onClick: () => this.onAction(handler()) }, [label]))),
+        ])
+    }
+}
+
+storiesOf('Editor', module)
+    .add('selection', () => {
+        return h(Editor)
     })

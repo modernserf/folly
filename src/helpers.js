@@ -84,7 +84,6 @@ export class ContentEditable extends Component {
         return h('div', {
             contentEditable: true,
             ref: this.setNode,
-            onInput: this.onChange,
             onBlur: this.onChange,
             dangerouslySetInnerHTML: { __html: value },
             ...props,

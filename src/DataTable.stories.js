@@ -2,6 +2,7 @@ import h from 'react-hyperscript'
 import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
 import { DevContainer } from './story'
+import { BaseCell } from './Cell'
 
 const dataTableColor = '#060'
 
@@ -12,12 +13,12 @@ const HeaderField = styled.th`
     text-align: left;
 `
 
-const HeaderItem = ({ label, type }) =>
-    h(HeaderField, [label, ' : ', type.label])
+const HeaderItem = ({ label }) =>
+    h(HeaderField, [label])
 
 const Header = ({ columns }) =>
-    h('tr', columns.map(({ id, label, type }) =>
-        h(HeaderItem, { key: id, label, type })
+    h('tr', columns.map(({ id, label }) =>
+        h(HeaderItem, { key: id, label })
     ))
 
 const Section = styled.table`
@@ -28,62 +29,59 @@ const Section = styled.table`
 `
 
 const DataTable = ({ columns, rows }) => h(Section, [
-    h(Header, { columns }),
-    ...rows.map(({ id, fields }) => h('tr', { key: id },
-        columns.map((col) => h('td', [fields[col.id].label])))),
+    h('tbody', [
+        h(Header, { columns }),
+        ...rows.map((fields, i) => h('tr', { key: i },
+            columns.map((col) => h('td', [
+                h(BaseCell, fields[col.id]),
+            ])))),
+    ]),
 ])
 
 const get = (arr, id) => arr.find((x) => x.id === id)
 
-const types = [
-    { id: 'station', label: 'Station' },
-    { id: 'line', label: 'Line' },
-]
-
 const stations = [
-    { id: 'park', label: 'Park Street' },
-    { id: 'downtown', label: 'Downtown Crossing' },
-    { id: 'south', label: 'South Station' },
-    { id: 'haymarket', label: 'Haymarket' },
-    { id: 'govt', label: 'Government Center' },
-    { id: 'state', label: 'State Street' },
-    { id: 'aquarium', label: 'Aquarium' },
+    { id: 'park', value: 'Park Street' },
+    { id: 'downtown', value: 'Downtown Crossing' },
+    { id: 'south', value: 'South Station' },
+    { id: 'haymarket', value: 'Haymarket' },
+    { id: 'govt', value: 'Government Center' },
+    { id: 'state', value: 'State Street' },
+    { id: 'aquarium', value: 'Aquarium' },
 ].map((s) => ({
     ...s,
-    type: get(types, 'station'),
+    type: 'text',
+    viewState: 'view',
 }))
 
 const lines = [
-    { id: 'red', label: 'Red' },
-    { id: 'green', label: 'Green' },
-    { id: 'blue', label: 'Blue' },
-    { id: 'orange', label: 'Orange' },
+    { id: 'red', value: 'Red' },
+    { id: 'green', value: 'Green' },
+    { id: 'blue', value: 'Blue' },
+    { id: 'orange', value: 'Orange' },
 ].map((s) => ({
     ...s,
-    type: get(types, 'line'),
+    type: 'text',
+    viewState: 'view',
 }))
 
 const columns = [
-    { id: 'from', label: 'From', type: get(types, 'station') },
-    { id: 'to', label: 'To', type: get(types, 'station') },
-    { id: 'line', label: 'Line', type: get(types, 'line') },
+    { id: 'from', label: 'From' },
+    { id: 'to', label: 'To' },
+    { id: 'line', label: 'Line' },
 ]
 
 const row = (from, to, line) => ({ from: get(stations, from), to: get(stations, to), line: get(lines, line) })
-
 const rows = [
-    { fields: row('park', 'downtown', 'red') },
-    { fields: row('downtown', 'south', 'red') },
-    { fields: row('haymarket', 'govt', 'green') },
-    { fields: row('govt', 'park', 'green') },
-    { fields: row('haymarket', 'state', 'orange') },
-    { fields: row('state', 'downtown', 'orange') },
-    { fields: row('govt', 'state', 'blue') },
-    { fields: row('state', 'aquarium', 'blue') },
-].map((s, i) => ({
-    ...s,
-    id: i.toString(),
-}))
+    row('park', 'downtown', 'red'),
+    row('downtown', 'south', 'red'),
+    row('haymarket', 'govt', 'green'),
+    row('govt', 'park', 'green'),
+    row('haymarket', 'state', 'orange'),
+    row('state', 'downtown', 'orange'),
+    row('govt', 'state', 'blue'),
+    row('state', 'aquarium', 'blue'),
+]
 
 storiesOf('DataTable', module)
     .add('normal', () => (
