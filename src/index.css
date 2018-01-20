@@ -51,3 +51,11 @@ table {
     box-sizing: border-box;
     position: relative;
 }
+
+@font-face {
+    font-family: 'Parc Place';
+    src: url('fonts/parc_place-webfont.woff2') format('woff2'),
+         url('fonts/parc_place-webfont.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}

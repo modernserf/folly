@@ -1,4 +1,3 @@
-import './App.css'
 import h from 'react-hyperscript'
 import { Provider, connect } from 'react-redux'
 import styled from 'styled-components'
