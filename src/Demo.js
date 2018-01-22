@@ -1,3 +1,4 @@
+import React, { Fragment } from 'react'
 import h from 'react-hyperscript'
 import styled from 'styled-components'
 
@@ -46,7 +47,12 @@ const TermWrap = styled.span`
 `
 
 const Terms = ({ children }) =>
-    h(TermWrap, {}, ['(', children, ')'])
+    h(TermWrap, {}, ['(',
+        ...React.Children.map(children, (ch, i) => h(Fragment, { key: i }, [
+            i > 0 ? ', ' : null,
+            ch,
+        ])),
+        ')'])
 
 const EndRule = styled.span``
 
@@ -59,12 +65,12 @@ const FactLine = ({ selection, dup, values: [functor, ...terms] }) =>
         h(SelectedIf, { selected: selection === 0 }, [
             h(dup ? DupFunctor : Atom, [functor || h(Placeholder)]),
         ]),
-        h(Terms, [
-            ...terms.map((term, i) =>
+        terms.length
+            ? h(Terms, terms.map((term, i) =>
                 h(SelectedIf, { key: i, selected: selection === i + 1 }, [
                     term || h(Placeholder),
-                ])),
-        ]),
+                ])))
+            : null,
         h(EndRule, ['.']),
     ])
 

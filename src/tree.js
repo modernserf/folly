@@ -1,4 +1,4 @@
-import { lens, lensPath, view, over, set, add, pipe, compose, append } from 'ramda'
+import { lens, lensPath, view, over, set, add, pipe, compose, append, when } from 'ramda'
 
 const lensInto = (treeLens, pathLens) => {
     const getAtCursor = compose(lensPath, view(pathLens))
@@ -8,7 +8,7 @@ const lensInto = (treeLens, pathLens) => {
     )
 }
 
-const blankFactLine = ['', '']
+const blankFactLine = ['']
 
 const cursorY = lensPath(['selectionPath', 0])
 const cursorX = lensPath(['selectionPath', 1])
@@ -22,21 +22,48 @@ const selectNextLine = pipe(
     set(cursorX, 0))
 const selectNextToken = over(cursorX, add(1))
 
+const insertBlankTerm = (state) => {
+    const y = view(cursorY, state)
+    const line = compose(lines, lensPath([y]))
+    return over(line, append(''), state)
+}
 const insertNewLine = over(lines, append(blankFactLine))
 
-const copyTokenAbove = (state) => {
-    const ifLineWereAbove = over(cursorY, add(-1), state)
-    return set(atCursor, view(atCursor, ifLineWereAbove), state)
+const copyLineAbove = (state) => {
+    let aboveState = over(cursorY, add(-1), state)
+    state = set(atCursor, view(atCursor, aboveState), state)
+    aboveState = selectNextToken(aboveState)
+    while (hasNextToken(aboveState)) {
+        aboveState = selectNextToken(aboveState)
+        state = insertBlankTerm(state)
+    }
+    return state
 }
 
-const match = (map, initState) => (state = initState, action) => map[action.type]
-    ? map[action.type](state, action.payload, action)
+const match = (handlers, initState) => (state = initState, action) => handlers[action.type]
+    ? pipe(...handlers[action.type](action.payload))(state)
     : state
 
+const hasNextToken = (state) => {
+    const withNextToken = selectNextToken(state)
+    return view(atCursor, withNextToken) !== undefined
+}
+
 export const reducer = match({
-    key_down: (state, ch) => over(atCursor, (w) => w + ch, state),
-    next_focus: selectNextToken,
-    new_line_dup: pipe(insertNewLine, selectNextLine, copyTokenAbove, selectNextToken),
+    key_down: (ch) => [over(atCursor, (w) => w + ch)],
+    add_term: () => [insertBlankTerm, selectNextToken],
+    new_line: () => [insertNewLine, selectNextLine],
+    new_line_dup: () => [
+        insertNewLine,
+        selectNextLine,
+        copyLineAbove,
+        insertBlankTerm,
+        selectNextToken,
+    ],
+    insert_value: (value) => [
+        set(atCursor, value),
+        when(hasNextToken, selectNextToken),
+    ],
 }, {
     lines: [blankFactLine],
     selectionPath: [0, 0],
