@@ -1,3 +1,4 @@
+import { Component } from 'react'
 import h from 'react-hyperscript'
 // import { pipe, lens, lensPath, view, set, over, append, compose } from 'ramda'
 import shortid from 'shortid'
@@ -23,6 +24,7 @@ const RowGroup = styled.tbody`
     }
     td {
         width: 100%;
+        vertical-align: top;
     }
     tr:first-child {
         th, td {
@@ -34,7 +36,6 @@ const RowGroup = styled.tbody`
             padding-bottom: 0.5em;
         }
     }
-
 `
 
 const Head = styled.th`
@@ -93,7 +94,6 @@ const Struct = styled.div`
     display: flex;
     flex-direction: row;
     align-items: center;
-    flex-flow: wrap;
 `
 
 const StructEntry = styled.div`
@@ -109,12 +109,69 @@ const StructLabel = styled.span`
     color: #888;
 `
 
-const StructForm = ({ children }) => h(Struct, [
-    ...children.map(([header, value], i) =>
-        h(StructEntry, { key: i }, [
-            h(StructLabel, [header.label, ':']),
-            h(Form, value),
-        ])),
+class OverflowHandler extends Component {
+    state = {
+        overflowState: 'init', // init | normal | overflow
+    }
+    componentDidMount () {
+        this.checkOverflow()
+    }
+    componentDidUpdate () {
+        this.checkOverflow()
+    }
+    checkOverflow () {
+        const isOverflowing = this.el.offsetWidth < this.el.scrollWidth
+        const nextState = isOverflowing ? 'overflow' : 'normal'
+        if (this.state.overflowState !== nextState) {
+            this.setState({ overflowState: nextState })
+        }
+    }
+    setRef = (el) => { this.el = el }
+    render () {
+        const { overflowState } = this.state
+        const { children, fallback } = this.props
+        return h('div', { ref: this.setRef, style: { overflow: 'hidden' } }, [
+            h('div', { style: { opacity: 0, position: 'absolute' } }, [children]),
+            overflowState === 'normal' && children,
+            overflowState === 'overflow' && fallback,
+        ])
+    }
+}
+
+const StructTableWrap = styled.table`
+    line-height: 1.4;
+    tr + tr td,
+    tr + tr th {
+        padding-top: 2px;
+    }
+    td {
+        vertical-align: top;
+        padding-left: 4px;
+    }
+`
+
+const StructTable = ({ children }) =>
+    h(StructTableWrap, [
+        h('tbody', [
+            ...children.map(([header, value], i) =>
+                h('tr', { key: header.id }, [
+                    h(Head, [header.label, ':']),
+                    h(Value, [h(Form, value)]),
+                ])
+            ),
+        ]),
+    ])
+
+const StructForm = ({ children }) => h(OverflowHandler, {
+    fallback: h(StructTable, { children }),
+}, [
+    h(Struct, [
+        ...children.map(([header, value], i) =>
+            h(StructEntry, { key: i }, [
+                h(StructLabel, [header.label, ':']),
+                h(Form, value),
+            ])),
+    ]),
 ])
 
 const Form = (props) => match(props.type, {
@@ -147,7 +204,7 @@ const RuleCase = styled.div`
 `
 
 const RuleRow = styled.div`
-    margin: 8px;
+    margin: 0.8em 0.5em;
 `
 
 const RuleHeaderVar = styled.span`
@@ -282,7 +339,7 @@ const data = {
                 struct(
                     [header('From'), varr('Next')],
                     [header('To'), varr('To')],
-                    [header('Path'), varr('Rest')]
+                    [header('Path'), varr('An extremely long name that causes overflow')]
                 )
             )
         )
