@@ -38,3 +38,8 @@ export class Player extends Component {
         )
     }
 }
+
+export const Range = ({ onChange, ...props }) =>
+    h('input', { type: 'range', ...props, onChange: (e) => onChange(Number(e.target.value)) })
+
+export const typing = (text) => text.split('').map((ch) => ({ type: 'key_down', payload: ch }))

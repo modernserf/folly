@@ -1,13 +1,8 @@
 import h from 'react-hyperscript'
 import { storiesOf } from '@storybook/react'
-import { Player } from './story'
+import { Player, Range, typing } from './story'
 import { Container, FactBlock } from './Demo'
 import { reducer } from './tree'
-
-const Range = ({ onChange, ...props }) =>
-    h('input', { type: 'range', ...props, onChange: (e) => onChange(Number(e.target.value)) })
-
-const typing = (text) => text.split('').map((ch) => ({ type: 'key_down', payload: ch }))
 
 function * renderActions (actions) {
     let state = reducer(undefined, {})

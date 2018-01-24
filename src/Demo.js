@@ -13,6 +13,15 @@ export const Container = styled.div`
     color: #333;
 `
 
+const Trunc = styled.span`
+    display: inline-block;
+    max-width: ${({ selected, count }) =>
+        selected ? 100 : 100 / (count + 1)}%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+`
+
 const Selected = styled.span`
     display: inline-block;
     padding-bottom: 2px;
@@ -21,6 +30,10 @@ const Selected = styled.span`
 
 const Block = styled.div`
     margin-bottom: 1em;
+`
+
+const Spacer = styled.div`
+    height: 1em;
 `
 const Line = styled.div`
     padding-bottom: 0.5em;
@@ -68,7 +81,7 @@ const FactLine = ({ selection, dup, values: [functor, ...terms] }) =>
         terms.length
             ? h(Terms, terms.map((term, i) =>
                 h(SelectedIf, { key: i, selected: selection === i + 1 }, [
-                    term || h(Placeholder),
+                    term ? h(Trunc, { selected: selection === i + 1, count: terms.length }, [term]) : h(Placeholder),
                 ])))
             : null,
         h(EndRule, ['.']),
@@ -76,9 +89,9 @@ const FactLine = ({ selection, dup, values: [functor, ...terms] }) =>
 
 export const FactBlock = ({ selectionPath, lines }) =>
     h(Block, lines.map((line, i) => [
-        h(FactLine, {
+        line.length ? h(FactLine, {
             selection: selectionPath[0] === i ? selectionPath[1] : null,
             dup: line[0] === (lines[i - 1] || [])[0],
             values: line,
-        }),
+        }) : h(Spacer),
     ]))

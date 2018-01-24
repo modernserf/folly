@@ -27,6 +27,7 @@ const insertBlankTerm = (state) => {
     const line = compose(lines, lensPath([y]))
     return over(line, append(''), state)
 }
+const insertSpaceLine = over(lines, append([]))
 const insertNewLine = over(lines, append(blankFactLine))
 
 const copyLineAbove = (state) => {
@@ -52,7 +53,7 @@ const hasNextToken = (state) => {
 export const reducer = match({
     key_down: (ch) => [over(atCursor, (w) => w + ch)],
     add_term: () => [insertBlankTerm, selectNextToken],
-    new_line: () => [insertNewLine, selectNextLine],
+    new_line: () => [insertSpaceLine, selectNextLine, insertNewLine, selectNextLine],
     new_line_dup: () => [
         insertNewLine,
         selectNextLine,
