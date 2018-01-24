@@ -10,7 +10,9 @@ export const Container = styled.div`
     margin: 20px;
     padding: 20px;
     font-family: 'Parc Place', sans-serif;
+    font-size: 14px;
     color: #333;
+    overflow: auto;
 `
 
 const Trunc = styled.span`
