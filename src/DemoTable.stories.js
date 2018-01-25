@@ -1,6 +1,6 @@
 import { Component } from 'react'
 import h from 'react-hyperscript'
-// import { pipe, lens, lensPath, view, set, over, append, compose } from 'ramda'
+import { last, pipe, lens, lensPath, lensIndex, view, set, over, compose, insert } from 'ramda'
 import shortid from 'shortid'
 import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
@@ -370,104 +370,51 @@ const data = {
     ),
 }
 
+const programBlocks = lensPath(['program', 'children'])
+const baseFactBlock = () => factBlock([header('')], factRow({}))
+const addFactBlockToProgram = (index) =>
+    over(programBlocks, insert(index, baseFactBlock()))
+
+const headerItems = lensPath(['header', 'children'])
+const rows = lensPath(['children'])
+
+const thenLensIndex = (aLens) => (index) => compose(aLens, lensIndex(index))
+
+const factAt = thenLensIndex(programBlocks)
+const headerAt = thenLensIndex(headerItems)
+const rowAt = thenLensIndex(rows)
+
+const valueAt = (key) => lensPath(['values', key])
+
+const setHeader = (factIndex, headerIndex, value) =>
+    set(compose(factAt(factIndex), headerAt(headerIndex)), value)
+
+const insertHeaderField = (factIndex, headerIndex) =>
+    over(compose(factAt(factIndex), headerItems), insert(headerIndex, header('')))
+
+const setValue = (factIndex, rowIndex, key, value) =>
+    set(compose(factAt(factIndex), rowAt(rowIndex), valueAt(key)), value)
+
+const insertFactRow = (factIndex, rowIndex) =>
+    over(compose(factAt(factIndex), rows), insert(rowIndex, factRow({})))
+
 const factFrames = [
-    // init
     { program: program() },
-    // add fact block
-    { program: program(
-        factBlock(
-            [header('')],
-            factRow({})
-        )
-    ) },
-    // set label
-    { program: program(
-        factBlock(
-            [header('From')],
-            factRow({})
-        )
-    ) },
-    // add field
-    { program: program(
-        factBlock(
-            [header('From'), header('')],
-            factRow({})
-        )
-    ) },
-    // set label
-    { program: program(
-        factBlock(
-            [header('From'), header('To')],
-            factRow({})
-        )
-    ) },
-    // add field
-    { program: program(
-        factBlock(
-            [header('From'), header('To'), header('')],
-            factRow({})
-        )
-    ) },
-    // set label
-    { program: program(
-        factBlock(
-            [header('From'), header('To'), header('Line')],
-            factRow({})
-        )
-    ) },
-    // set value
-    { program: program(
-        factBlock(
-            [header('From'), header('To'), header('Line')],
-            factRow({ from: text('Park Street') })
-        )
-    ) },
-    // set value
-    { program: program(
-        factBlock(
-            [header('From'), header('To'), header('Line')],
-            factRow({ from: text('Park Street'), to: text('Downtown Crossing') })
-        )
-    ) },
-    // set value
-    { program: program(
-        factBlock(
-            [header('From'), header('To'), header('Line')],
-            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') })
-        )
-    ) },
-    // new row
-    { program: program(
-        factBlock(
-            [header('From'), header('To'), header('Line')],
-            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') }),
-            factRow({}),
-        )
-    ) },
-    // set value
-    { program: program(
-        factBlock(
-            [header('From'), header('To'), header('Line')],
-            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') }),
-            factRow({ from: text('Park Street') }),
-        )
-    ) },
-    // set value
-    { program: program(
-        factBlock(
-            [header('From'), header('To'), header('Line')],
-            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') }),
-            factRow({ from: text('Park Street'), to: text('Govt Center') }),
-        )
-    ) },
-    // set value
-    { program: program(
-        factBlock(
-            [header('From'), header('To'), header('Line')],
-            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') }),
-            factRow({ from: text('Park Street'), to: text('Govt Center'), line: text('Green') }),
-        )
-    ) },
+    addFactBlockToProgram(0),
+    setHeader(0, 0, header('From')),
+    insertHeaderField(0, 1),
+    setHeader(0, 1, header('To')),
+    insertHeaderField(0, 2),
+    setHeader(0, 2, header('Line')),
+
+    setValue(0, 0, 'from', text('Park Street')),
+    setValue(0, 0, 'to', text('Downtown Crossing')),
+    setValue(0, 0, 'line', text('Red')),
+
+    insertFactRow(0, 1),
+    setValue(0, 1, 'from', text('Park Street')),
+    setValue(0, 1, 'to', text('Govt Center')),
+    setValue(0, 1, 'line', text('Green')),
 ]
 
 const ruleFrames = [
@@ -694,93 +641,6 @@ const ruleFrames = [
             )
         ),
     ) },
-    // add struct
-    { program: program(
-        ruleBlock(
-            [header('Item'), header('Not in', 'List')],
-            ruleCase(
-                op('==', varr('List'), list())
-            ),
-            ruleCase(
-                op('==', varr('List'), list([varr('First')], varr('Rest'))),
-                op('!=', varr('Item'), varr('First')),
-                struct(
-                    [header('Item'), varr('Item')],
-                    [header('Not in'), varr('Rest')]
-                ),
-                struct(
-                    [header('From'), placeholder()],
-                    [header('To'), placeholder()],
-                    [header('Path'), placeholder()]
-                )
-            )
-        ),
-    ) },
-    // add field
-    { program: program(
-        ruleBlock(
-            [header('Item'), header('Not in', 'List')],
-            ruleCase(
-                op('==', varr('List'), list())
-            ),
-            ruleCase(
-                op('==', varr('List'), list([varr('First')], varr('Rest'))),
-                op('!=', varr('Item'), varr('First')),
-                struct(
-                    [header('Item'), varr('Item')],
-                    [header('Not in'), varr('Rest')]
-                ),
-                struct(
-                    [header('From'), varr('Next')],
-                    [header('To'), placeholder()],
-                    [header('Path'), placeholder()]
-                )
-            )
-        ),
-    ) },
-    { program: program(
-        ruleBlock(
-            [header('Item'), header('Not in', 'List')],
-            ruleCase(
-                op('==', varr('List'), list())
-            ),
-            ruleCase(
-                op('==', varr('List'), list([varr('First')], varr('Rest'))),
-                op('!=', varr('Item'), varr('First')),
-                struct(
-                    [header('Item'), varr('Item')],
-                    [header('Not in'), varr('Rest')]
-                ),
-                struct(
-                    [header('From'), varr('Next')],
-                    [header('To'), varr('To')],
-                    [header('Path'), placeholder()]
-                )
-            )
-        ),
-    ) },
-    // add field
-    { program: program(
-        ruleBlock(
-            [header('Item'), header('Not in', 'List')],
-            ruleCase(
-                op('==', varr('List'), list())
-            ),
-            ruleCase(
-                op('==', varr('List'), list([varr('First')], varr('Rest'))),
-                op('!=', varr('Item'), varr('First')),
-                struct(
-                    [header('Item'), varr('Item')],
-                    [header('Not in'), varr('Rest')]
-                ),
-                struct(
-                    [header('From'), varr('Next')],
-                    [header('To'), varr('To')],
-                    [header('Path'), varr('An unreasonably long name for a variable that breaks onto multiple lines')]
-                )
-            )
-        ),
-    ) },
 ]
 
 const PlayerWrap = (props) =>
@@ -793,6 +653,12 @@ const PlayerWrap = (props) =>
         h(Range, { min: 0, max: frames.length - 1, value: frame, onChange: setFrame }),
     ])
 
+const applyFrames = (data) => data.reduce((items, next) =>
+    typeof next === 'function'
+        ? items.concat([next(last(items))])
+        : items.concat([next]),
+[])
+
 storiesOf('Demo', module)
     .add('table', () =>
         h(Container, [
@@ -800,7 +666,10 @@ storiesOf('Demo', module)
         ]))
     .add('edit fact', () =>
         h(PlayerWrap, {
-            frames: factFrames.map((state, i) => h(Program, { key: i, ...state })),
+            frames: applyFrames(factFrames).map((state, i) => h('div', [
+                h(Program, { key: i, ...state }),
+                h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
+            ])),
         }))
     .add('edit rule', () =>
         h(PlayerWrap, {
