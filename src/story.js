@@ -31,10 +31,17 @@ export class Player extends Component {
     render () {
         const { onNext, onPlay, setFrame } = this
         const { frame } = this.state
-        const { frames, children } = this.props
+        const { frames, children, showAll } = this.props
         const activeFrame = frames[frame % frames.length]
         return h(Fragment,
-            children({ children: activeFrame, frames, frame, onNext, onPlay, setFrame }),
+            children({
+                children: showAll ? frames : activeFrame,
+                frames,
+                frame,
+                onNext,
+                onPlay,
+                setFrame,
+            }),
         )
     }
 }

@@ -1,10 +1,10 @@
-import { Component } from 'react'
+import { Component, Fragment } from 'react'
 import h from 'react-hyperscript'
 // import { pipe, lens, lensPath, view, set, over, append, compose } from 'ramda'
 import shortid from 'shortid'
 import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
-// import { Player, Range } from './story'
+import { Player, Range } from './story'
 import { Container } from './Demo'
 
 const match = (key, opts) => opts[key]()
@@ -47,12 +47,14 @@ const Value = styled.td`
     text-align: left;
 `
 
-const Fact = ({ header, data: { values }, index }) =>
+const Fact = ({ header, data: { values } }) =>
     h(RowGroup, [
         ...header.children.map(({ id, label }) =>
-            h('tr', { key: values[id].id }, [
+            h('tr', { key: id }, [
                 h(Head, [label, ':']),
-                h(Value, [h(Form, values[id])]),
+                h(Value, [
+                    values[id] ? h(Form, values[id]) : null,
+                ]),
             ])
         ),
     ])
@@ -174,12 +176,21 @@ const StructForm = ({ children }) => h(OverflowHandler, {
     ]),
 ])
 
+const PlaceholderForm = styled.span`
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    border-radius: 1em;
+    background-color: #ccf;
+`
+
 const Form = (props) => match(props.type, {
     text: () => h(TextForm, props),
     operator: () => h(OperatorForm, props),
     var: () => h(VarForm, props),
     list: () => h(ListForm, props),
     struct: () => h(StructForm, props),
+    placeholder: () => h(PlaceholderForm, props),
 })
 
 const RuleBlockWrap = styled.div`
@@ -224,11 +235,11 @@ const RuleBlock = ({ header, children }) =>
             ),
         ]),
         ...children.map(({ id, children }) =>
-            h(RuleCase, [
-                ...children.map((props, i) =>
-                    h(RuleRow, [ h(Form, { key: i, ...props }) ])
-                ),
-            ])
+            h(RuleCase, children.length
+                ? children.map((props, i) =>
+                    h(RuleRow, [ h(Form, { key: i, ...props }) ]))
+                : [h(RuleRow, [ h(PlaceholderForm) ])]
+            )
         ),
     ])
 
@@ -273,8 +284,9 @@ const ruleBlock = (headers, ...children) => ({
     children,
 })
 
+const placeholder = () => ({ type: 'placeholder' })
 const ruleCase = (...children) => ({ type: 'ruleCase', id: shortid.generate(), children })
-const op = (operator, lhs, rhs) => ({ type: 'operator', operator, lhs, rhs })
+const op = (operator, lhs = placeholder(), rhs = placeholder()) => ({ type: 'operator', operator, lhs, rhs })
 const varr = (label) => ({ type: 'var', label })
 const list = (children = [], tail) => ({ type: 'list', children, tail })
 const struct = (...children) => ({ type: 'struct', children })
@@ -339,15 +351,447 @@ const data = {
                 struct(
                     [header('From'), varr('Next')],
                     [header('To'), varr('To')],
-                    [header('Path'), varr('An extremely long name that causes overflow')]
+                    [header('Path'), varr('Rest')]
                 )
             )
         )
     ),
 }
 
+const factFrames = [
+    // init
+    { program: program() },
+    // add fact block
+    { program: program(
+        factBlock(
+            [header('')],
+            factRow({})
+        )
+    ) },
+    // set label
+    { program: program(
+        factBlock(
+            [header('From')],
+            factRow({})
+        )
+    ) },
+    // add field
+    { program: program(
+        factBlock(
+            [header('From'), header('')],
+            factRow({})
+        )
+    ) },
+    // set label
+    { program: program(
+        factBlock(
+            [header('From'), header('To')],
+            factRow({})
+        )
+    ) },
+    // add field
+    { program: program(
+        factBlock(
+            [header('From'), header('To'), header('')],
+            factRow({})
+        )
+    ) },
+    // set label
+    { program: program(
+        factBlock(
+            [header('From'), header('To'), header('Line')],
+            factRow({})
+        )
+    ) },
+    // set value
+    { program: program(
+        factBlock(
+            [header('From'), header('To'), header('Line')],
+            factRow({ from: text('Park Street') })
+        )
+    ) },
+    // set value
+    { program: program(
+        factBlock(
+            [header('From'), header('To'), header('Line')],
+            factRow({ from: text('Park Street'), to: text('Downtown Crossing') })
+        )
+    ) },
+    // set value
+    { program: program(
+        factBlock(
+            [header('From'), header('To'), header('Line')],
+            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') })
+        )
+    ) },
+    // new row
+    { program: program(
+        factBlock(
+            [header('From'), header('To'), header('Line')],
+            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') }),
+            factRow({}),
+        )
+    ) },
+    // set value
+    { program: program(
+        factBlock(
+            [header('From'), header('To'), header('Line')],
+            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') }),
+            factRow({ from: text('Park Street') }),
+        )
+    ) },
+    // set value
+    { program: program(
+        factBlock(
+            [header('From'), header('To'), header('Line')],
+            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') }),
+            factRow({ from: text('Park Street'), to: text('Govt Center') }),
+        )
+    ) },
+    // set value
+    { program: program(
+        factBlock(
+            [header('From'), header('To'), header('Line')],
+            factRow({ from: text('Park Street'), to: text('Downtown Crossing'), line: text('Red') }),
+            factRow({ from: text('Park Street'), to: text('Govt Center'), line: text('Green') }),
+        )
+    ) },
+]
+
+const ruleFrames = [
+    // init
+    { program: program() },
+    // add rule
+    { program: program(
+        ruleBlock(
+            [header('')],
+        ),
+    ) },
+    { program: program(
+        ruleBlock(
+            [header('Item')],
+        ),
+    ) },
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('')],
+        ),
+    ) },
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in')],
+        ),
+    ) },
+    // set variable name
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+        ),
+    ) },
+    // add case
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(),
+        ),
+    ) },
+    // add op
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', placeholder(), placeholder())
+            ),
+        ),
+    ) },
+    // add operand
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), placeholder())
+            ),
+        ),
+    ) },
+    // add operand
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+        ),
+    ) },
+    // add case
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase()
+        ),
+    ) },
+    // add operator
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('=='),
+            )
+        ),
+    ) },
+    // add operand
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List')),
+            )
+        ),
+    ) },
+    // add operand
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([placeholder()], placeholder())),
+            )
+        ),
+    ) },
+    // add operand
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], placeholder())),
+            )
+        ),
+    ) },
+    // add operand
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+            )
+        ),
+    ) },
+    // add operator
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!='),
+            )
+        ),
+    ) },
+    // add operand
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item')),
+            )
+        ),
+    ) },
+    // add operand
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item'), varr('First')),
+            )
+        ),
+    ) },
+    // add struct
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item'), varr('First')),
+                struct(
+                    [header('Item'), placeholder()],
+                    [header('Not in'), placeholder()]
+                )
+            )
+        ),
+    ) },
+    // add field
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item'), varr('First')),
+                struct(
+                    [header('Item'), varr('Item')],
+                    [header('Not in'), placeholder()]
+                )
+            )
+        ),
+    ) },
+    // add field
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item'), varr('First')),
+                struct(
+                    [header('Item'), varr('Item')],
+                    [header('Not in'), varr('Rest')]
+                )
+            )
+        ),
+    ) },
+    // add struct
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item'), varr('First')),
+                struct(
+                    [header('Item'), varr('Item')],
+                    [header('Not in'), varr('Rest')]
+                ),
+                struct(
+                    [header('From'), placeholder()],
+                    [header('To'), placeholder()],
+                    [header('Path'), placeholder()]
+                )
+            )
+        ),
+    ) },
+    // add field
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item'), varr('First')),
+                struct(
+                    [header('Item'), varr('Item')],
+                    [header('Not in'), varr('Rest')]
+                ),
+                struct(
+                    [header('From'), varr('Next')],
+                    [header('To'), placeholder()],
+                    [header('Path'), placeholder()]
+                )
+            )
+        ),
+    ) },
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item'), varr('First')),
+                struct(
+                    [header('Item'), varr('Item')],
+                    [header('Not in'), varr('Rest')]
+                ),
+                struct(
+                    [header('From'), varr('Next')],
+                    [header('To'), varr('To')],
+                    [header('Path'), placeholder()]
+                )
+            )
+        ),
+    ) },
+    // add field
+    { program: program(
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item'), varr('First')),
+                struct(
+                    [header('Item'), varr('Item')],
+                    [header('Not in'), varr('Rest')]
+                ),
+                struct(
+                    [header('From'), varr('Next')],
+                    [header('To'), varr('To')],
+                    [header('Path'), varr('An unreasonably long name for a variable that breaks onto multiple lines')]
+                )
+            )
+        ),
+    ) },
+]
+
+const PlayerWrap = (props) =>
+    h(Player, props, ({ children, onNext, onPlay, setFrame, frame, frames }) => [
+        h(Container, [
+            children,
+        ]),
+        h('button', { onClick: onNext }, ['step']),
+        h('button', { onClick: onPlay }, ['play']),
+        h(Range, { min: 0, max: frames.length - 1, value: frame, onChange: setFrame }),
+    ])
+
 storiesOf('Demo', module)
     .add('table', () =>
         h(Container, [
             h(Program, data),
         ]))
+    .add('edit fact', () =>
+        h(PlayerWrap, {
+            frames: factFrames.map((state, i) => h(Program, { key: i, ...state })),
+        }))
+    .add('edit rule', () =>
+        h(PlayerWrap, {
+            // showAll: true,
+            frames: ruleFrames.map((state, i) => h(Program, { key: i, ...state })),
+        }))
