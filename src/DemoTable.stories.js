@@ -1,11 +1,23 @@
-import { Component, Fragment } from 'react'
+import { Component } from 'react'
 import h from 'react-hyperscript'
 // import { pipe, lens, lensPath, view, set, over, append, compose } from 'ramda'
 import shortid from 'shortid'
 import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
 import { Player, Range } from './story'
-import { Container } from './Demo'
+
+export const Container = styled.div`
+    width: 375px;
+    height: 812px;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+    margin: 20px;
+    padding: 20px;
+    font-family: 'Parc Place', sans-serif;
+    font-size: 14px;
+    color: #333;
+    overflow: auto;
+`
 
 const match = (key, opts) => opts[key]()
 
