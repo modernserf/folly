@@ -207,10 +207,11 @@ const RuleCase = styled.div`
         background-color: #eee;
     }
     border: 1px solid #eee;
+    padding-bottom: 0.5em;
 `
 
 const RuleRow = styled.div`
-    margin: 0.8em 0.5em;
+    padding: 0.5em 0.5em 0;
 `
 
 const RuleHeaderVar = styled.span`

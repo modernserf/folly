@@ -1,6 +1,5 @@
-import { Component } from 'react'
 import h from 'react-hyperscript'
-import { last, pipe, lens, lensPath, lensIndex, view, set, over, compose, insert } from 'ramda'
+import { last, lensPath, lensIndex, view, set, over, compose, insert } from 'ramda'
 import shortid from 'shortid'
 import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
@@ -59,6 +58,8 @@ const varr = (label) => ({ type: 'var', label })
 const list = (children = [], tail) => ({ type: 'list', children, tail })
 const struct = (...children) => ({ type: 'struct', children })
 
+const eq = (varName, rhs) => op('==', varr(varName), rhs)
+
 const data = {
     program: program(
         factBlock(
@@ -84,6 +85,73 @@ const data = {
                 to: text('Downtown Crossing'),
                 line: text('Orange'),
             }),
+        ),
+        ruleBlock(
+            [header('Item'), header('Not in', 'List')],
+            ruleCase(
+                op('==', varr('List'), list())
+            ),
+            ruleCase(
+                op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                op('!=', varr('Item'), varr('First')),
+                struct(
+                    [header('Item'), varr('Item')],
+                    [header('Not in'), varr('Rest')]
+                )
+            )
+        ),
+        ruleBlock(
+            [header('From'), header('To'), header('Path')],
+            ruleCase(
+                op('==', varr('From'), varr('To')),
+                op('==', varr('Path'), list())
+            ),
+            ruleCase(
+                op('==', varr('Path'), list([varr('Link')], varr('Rest'))),
+                struct(
+                    [header('From'), varr('From')],
+                    [header('To'), varr('Next')],
+                    [header('Link'), varr('Link')]
+                ),
+                struct(
+                    [header('Item'), varr('Link')],
+                    [header('Not in'), varr('Rest')],
+                ),
+                struct(
+                    [header('From'), varr('Next')],
+                    [header('To'), varr('To')],
+                    [header('Path'), varr('Rest')]
+                )
+            )
+        )
+    ),
+}
+
+const dataRulesOnly = {
+    program: program(
+        ruleBlock(
+            [header('Station')],
+            ruleCase(eq('Station', text('Park Street'))),
+            ruleCase(eq('Station', text('Downtown Crossing'))),
+            ruleCase(eq('Station', text('Govt Center')))
+        ),
+        ruleBlock(
+            [header('From'), header('To'), header('Line')],
+            ruleCase(
+                eq('From', text('Park Street')),
+                eq('To', text('Downtown Crossing')),
+                eq('Line', text('Red')),
+            ),
+            ruleCase(
+                eq('From', text('Park Street')),
+                eq('To', text('Govt Center')),
+                eq('Line', text('Green')),
+            ),
+            ruleCase(
+                eq('From', text('State Street')),
+                eq('To', text('Downtown Crossing')),
+                eq('Line', text('Orange')),
+            ),
         ),
         ruleBlock(
             [header('Item'), header('Not in', 'List')],
@@ -166,6 +234,19 @@ const insertValue = (ruleIndex, caseIndex, path, value) =>
 const listCons = () => list([placeholder()], placeholder())
 const initStruct = (...headers) => struct(...headers.map((h) => [h, placeholder()]))
 
+const varNameForHeader = (header) => header.varName || header.label
+const insertFactAsRule = (ruleIndex, rowIndex) => (state) => {
+    const headers = view(compose(factAt(ruleIndex), headerItems), state)
+    // TODO: compose
+    const ops = headers.map((header) => eq(varNameForHeader(header)))
+
+    return over(
+        compose(factAt(ruleIndex), rows),
+        insert(rowIndex, ruleCase(...ops)),
+        state
+    )
+}
+
 const factFrames = [
     { program: program() },
     addBlockToProgram(0, baseFactBlock()),
@@ -175,18 +256,17 @@ const factFrames = [
     insertHeaderField(0, 2),
     setHeader(0, 2, header('Line')),
 
-    setValue(0, 0, 'from', text('Park Street')),
-    setValue(0, 0, 'to', text('Downtown Crossing')),
-    setValue(0, 0, 'line', text('Red')),
+    setValue(0, 0, 'From', text('Park Street')),
+    setValue(0, 0, 'To', text('Downtown Crossing')),
+    setValue(0, 0, 'Line', text('Red')),
 
     insertFactRow(0, 1),
-    setValue(0, 1, 'from', text('Park Street')),
-    setValue(0, 1, 'to', text('Govt Center')),
-    setValue(0, 1, 'line', text('Green')),
+    setValue(0, 1, 'From', text('Park Street')),
+    setValue(0, 1, 'To', text('Govt Center')),
+    setValue(0, 1, 'Line', text('Green')),
 ]
 
 const ruleFrames = [
-    // init
     { program: program() },
     addBlockToProgram(0, ruleBlock([header('')])),
 
@@ -216,6 +296,26 @@ const ruleFrames = [
     insertValue(0, 1, [2, 'children', 1, 1], varr('Rest')),
 ]
 
+const factsAsRules = [
+    { program: program() },
+    addBlockToProgram(0, ruleBlock([header('')])),
+    setHeader(0, 0, header('From')),
+    insertHeaderField(0, 1),
+    setHeader(0, 1, header('To')),
+    insertHeaderField(0, 2),
+    setHeader(0, 2, header('Line')),
+
+    insertFactAsRule(0, 0),
+    insertValue(0, 0, [0, 'rhs'], text('Park Street')),
+    insertValue(0, 0, [1, 'rhs'], text('Downtown Crossing')),
+    insertValue(0, 0, [2, 'rhs'], text('Red')),
+
+    insertFactAsRule(0, 1),
+    insertValue(0, 1, [0, 'rhs'], text('Park Street')),
+    insertValue(0, 1, [1, 'rhs'], text('Govt Center')),
+    insertValue(0, 1, [2, 'rhs'], text('Green')),
+]
+
 const PlayerWrap = (props) =>
     h(Player, props, ({ children, onNext, onPlay, setFrame, frame, frames }) => [
         h(Container, [
@@ -237,6 +337,10 @@ storiesOf('Demo', module)
         h(Container, [
             h(Program, data),
         ]))
+    .add('rules only', () =>
+        h(Container, [
+            h(Program, dataRulesOnly),
+        ]))
     .add('edit fact', () =>
         h(PlayerWrap, {
             frames: applyFrames(factFrames).map((state, i) => h('div', [
@@ -248,6 +352,14 @@ storiesOf('Demo', module)
         h(PlayerWrap, {
             // showAll: true,
             frames: applyFrames(ruleFrames).map((state, i) => h('div', [
+                h(Program, { key: i, ...state }),
+                // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
+            ])),
+        }))
+    .add('facts as rules', () =>
+        h(PlayerWrap, {
+            // showAll: true,
+            frames: applyFrames(factsAsRules).map((state, i) => h('div', [
                 h(Program, { key: i, ...state }),
                 // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
             ])),
