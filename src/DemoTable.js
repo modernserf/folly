@@ -4,62 +4,6 @@ import styled from 'styled-components'
 
 const match = (key, opts) => opts[key]()
 
-const Table = styled.table`
-    width: 100%;
-    margin-bottom: 1em;
-    border: 1px solid #eee;
-`
-
-const RowGroup = styled.tbody`
-    :nth-child(odd) {
-        background-color: #eee;
-    }
-    th, td {
-        padding: 0.2em 0.3em;
-    }
-    td {
-        width: 100%;
-        vertical-align: top;
-    }
-    tr:first-child {
-        th, td {
-            padding-top: 0.5em;
-        }
-    }
-    tr:last-child {
-        th, td {
-            padding-bottom: 0.5em;
-        }
-    }
-`
-
-const Head = styled.th`
-    text-align: right;
-    color: #888;
-`
-
-const Value = styled.td`
-    text-align: left;
-`
-
-const Fact = ({ header, data: { values } }) =>
-    h(RowGroup, [
-        ...header.children.map(({ id, label }) =>
-            h('tr', { key: id }, [
-                h(Head, [label, ':']),
-                h(Value, [
-                    values[id] ? h(Form, values[id]) : null,
-                ]),
-            ])
-        ),
-    ])
-
-const FactBlock = ({ header, children }) =>
-    h(Table, [
-        ...children.map((row, i) =>
-            h(Fact, { key: row.id, index: i, header, data: row })),
-    ])
-
 const TextForm = ({ label }) => h('span', [label])
 
 const Operator = styled.span`
@@ -145,6 +89,15 @@ const StructTableWrap = styled.table`
         vertical-align: top;
         padding-left: 4px;
     }
+`
+
+const Head = styled.th`
+    text-align: right;
+    color: #888;
+`
+
+const Value = styled.td`
+    text-align: left;
 `
 
 const StructTable = ({ children }) =>
@@ -239,11 +192,6 @@ const RuleBlock = ({ header, children }) =>
         ),
     ])
 
-const Block = (props) => match(props.type, {
-    factBlock: () => h(FactBlock, props),
-    ruleBlock: () => h(RuleBlock, props),
-})
-
 export const Program = ({ program }) =>
     h('div', {}, program.children.map((block) =>
-        h(Block, { key: block.id, ...block })))
+        h(RuleBlock, { key: block.id, ...block })))

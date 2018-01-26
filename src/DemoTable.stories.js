@@ -27,18 +27,8 @@ const slugify = (x) => x.toLowerCase().replace(/\s/g, '_')
 const colonize = (header) => header.map((h) => `${h.id}:`).join('')
 
 const program = (...children) => ({ type: 'program', children })
-const factBlock = (headers, ...children) => ({
-    type: 'factBlock',
-    id: colonize(headers),
-    header: {
-        type: 'headerRow',
-        children: headers,
-    },
-    children,
-})
 
 const header = (label, varName) => ({ type: 'headerCell', id: slugify(label), label, varName })
-const factRow = (values) => ({ type: 'factRow', id: shortid.generate(), values })
 const text = (label) => ({ type: 'text', id: shortid.generate(), label })
 
 const ruleBlock = (headers, ...children) => ({
@@ -59,73 +49,6 @@ const list = (children = [], tail) => ({ type: 'list', children, tail })
 const struct = (...children) => ({ type: 'struct', children })
 
 const eq = (varName, rhs) => op('==', varr(varName), rhs)
-
-const data = {
-    program: program(
-        factBlock(
-            [header('Station')],
-            factRow({ station: text('Park Street') }),
-            factRow({ station: text('Downtown Crossing') }),
-            factRow({ station: text('Govt Center') }),
-        ),
-        factBlock(
-            [header('From'), header('To'), header('Line')],
-            factRow({
-                from: text('Park Street'),
-                to: text('Downtown Crossing'),
-                line: text('Red'),
-            }),
-            factRow({
-                from: text('Park Street'),
-                to: text('Govt Center'),
-                line: text('Green'),
-            }),
-            factRow({
-                from: text('State Street'),
-                to: text('Downtown Crossing'),
-                line: text('Orange'),
-            }),
-        ),
-        ruleBlock(
-            [header('Item'), header('Not in', 'List')],
-            ruleCase(
-                op('==', varr('List'), list())
-            ),
-            ruleCase(
-                op('==', varr('List'), list([varr('First')], varr('Rest'))),
-                op('!=', varr('Item'), varr('First')),
-                struct(
-                    [header('Item'), varr('Item')],
-                    [header('Not in'), varr('Rest')]
-                )
-            )
-        ),
-        ruleBlock(
-            [header('From'), header('To'), header('Path')],
-            ruleCase(
-                op('==', varr('From'), varr('To')),
-                op('==', varr('Path'), list())
-            ),
-            ruleCase(
-                op('==', varr('Path'), list([varr('Link')], varr('Rest'))),
-                struct(
-                    [header('From'), varr('From')],
-                    [header('To'), varr('Next')],
-                    [header('Link'), varr('Link')]
-                ),
-                struct(
-                    [header('Item'), varr('Link')],
-                    [header('Not in'), varr('Rest')],
-                ),
-                struct(
-                    [header('From'), varr('Next')],
-                    [header('To'), varr('To')],
-                    [header('Path'), varr('Rest')]
-                )
-            )
-        )
-    ),
-}
 
 const dataRulesOnly = {
     program: program(
@@ -195,7 +118,6 @@ const dataRulesOnly = {
 }
 
 const programBlocks = lensPath(['program', 'children'])
-const baseFactBlock = () => factBlock([header('')], factRow({}))
 const addBlockToProgram = (index, block) =>
     over(programBlocks, insert(index, block))
 
@@ -208,8 +130,6 @@ const factAt = thenLensIndex(programBlocks)
 const headerAt = thenLensIndex(headerItems)
 const rowAt = thenLensIndex(rows)
 
-const valueAt = (key) => lensPath(['values', key])
-
 const setHeader = (factIndex, headerIndex, value) =>
     set(compose(factAt(factIndex), headerAt(headerIndex)), value)
 
@@ -220,11 +140,6 @@ const setHeaderVar = (factIndex, headerIndex, varName) =>
 const insertHeaderField = (factIndex, headerIndex) =>
     over(compose(factAt(factIndex), headerItems), insert(headerIndex, header('')))
 
-const setValue = (factIndex, rowIndex, key, value) =>
-    set(compose(factAt(factIndex), rowAt(rowIndex), valueAt(key)), value)
-
-const insertFactRow = (factIndex, rowIndex) =>
-    over(compose(factAt(factIndex), rows), insert(rowIndex, factRow({})))
 const insertRuleCase = (ruleIndex, caseIndex) =>
     over(compose(factAt(ruleIndex), rows), insert(caseIndex, ruleCase()))
 
@@ -246,25 +161,6 @@ const insertFactAsRule = (ruleIndex, rowIndex) => (state) => {
         state
     )
 }
-
-const factFrames = [
-    { program: program() },
-    addBlockToProgram(0, baseFactBlock()),
-    setHeader(0, 0, header('From')),
-    insertHeaderField(0, 1),
-    setHeader(0, 1, header('To')),
-    insertHeaderField(0, 2),
-    setHeader(0, 2, header('Line')),
-
-    setValue(0, 0, 'From', text('Park Street')),
-    setValue(0, 0, 'To', text('Downtown Crossing')),
-    setValue(0, 0, 'Line', text('Red')),
-
-    insertFactRow(0, 1),
-    setValue(0, 1, 'From', text('Park Street')),
-    setValue(0, 1, 'To', text('Govt Center')),
-    setValue(0, 1, 'Line', text('Green')),
-]
 
 const ruleFrames = [
     { program: program() },
@@ -335,19 +231,8 @@ const applyFrames = (data) => data.reduce((items, next) =>
 storiesOf('Demo', module)
     .add('table', () =>
         h(Container, [
-            h(Program, data),
-        ]))
-    .add('rules only', () =>
-        h(Container, [
             h(Program, dataRulesOnly),
         ]))
-    .add('edit fact', () =>
-        h(PlayerWrap, {
-            frames: applyFrames(factFrames).map((state, i) => h('div', [
-                h(Program, { key: i, ...state }),
-                // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
-            ])),
-        }))
     .add('edit rule', () =>
         h(PlayerWrap, {
             // showAll: true,
@@ -356,7 +241,7 @@ storiesOf('Demo', module)
                 // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
             ])),
         }))
-    .add('facts as rules', () =>
+    .add('edit fact', () =>
         h(PlayerWrap, {
             // showAll: true,
             frames: applyFrames(factsAsRules).map((state, i) => h('div', [
