@@ -1,5 +1,5 @@
 import h from 'react-hyperscript'
-import { last, lensPath, lensIndex, view, set, over, compose, insert } from 'ramda'
+import { uncurryN, last, lensPath, lensIndex, view, set, over, compose, insert, pipe, map } from 'ramda'
 import shortid from 'shortid'
 import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
@@ -28,7 +28,7 @@ const colonize = (header) => header.map((h) => `${h.id}:`).join('')
 
 const program = (...children) => ({ type: 'program', children })
 
-const header = (label, varName) => ({ type: 'headerCell', id: slugify(label), label, varName })
+const header = (label = '', varName) => ({ type: 'headerCell', id: slugify(label), label, varName })
 const text = (label) => ({ type: 'text', id: shortid.generate(), label })
 
 const ruleBlock = (headers, ...children) => ({
@@ -48,7 +48,10 @@ const varr = (label) => ({ type: 'var', label })
 const list = (children = [], tail) => ({ type: 'list', children, tail })
 const struct = (...children) => ({ type: 'struct', children })
 
+const listCons = () => list([placeholder()], placeholder())
+const initStruct = (...headers) => struct(...headers.map((h) => [h, placeholder()]))
 const eq = (varName, rhs) => op('==', varr(varName), rhs)
+const initRuleBlock = () => ruleBlock([header()])
 
 const dataRulesOnly = {
     program: program(
@@ -116,100 +119,92 @@ const dataRulesOnly = {
         )
     ),
 }
-
-const programBlocks = lensPath(['program', 'children'])
-const addBlockToProgram = (index, block) =>
-    over(programBlocks, insert(index, block))
-
-const headerItems = lensPath(['header', 'children'])
-const rows = lensPath(['children'])
-
+const insertL = uncurryN(3, (lens) => compose(over(lens), insert))
 const thenLensIndex = (aLens) => (index) => compose(aLens, lensIndex(index))
 
-const factAt = thenLensIndex(programBlocks)
-const headerAt = thenLensIndex(headerItems)
-const rowAt = thenLensIndex(rows)
+const programBlocks = lensPath(['program', 'children'])
+const ruleAt = thenLensIndex(programBlocks)
 
-const setHeader = (factIndex, headerIndex, value) =>
-    set(compose(factAt(factIndex), headerAt(headerIndex)), value)
+const rows = lensPath(['children'])
+
+const _headerItems = lensPath(['header', 'children'])
+const _headerAt = thenLensIndex(_headerItems)
+const headersAt = (ruleIndex) => compose(ruleAt(ruleIndex), _headerItems)
+const headerAt = (ruleIndex, headerIndex) => compose(ruleAt(ruleIndex), _headerAt(headerIndex))
 
 const headerVarName = lensPath(['varName'])
-const setHeaderVar = (factIndex, headerIndex, varName) =>
-    set(compose(factAt(factIndex), headerAt(headerIndex), headerVarName), varName)
+const headerVarAt = (ruleIndex, headerIndex) =>
+    compose(headerAt(ruleIndex, headerIndex), headerVarName)
 
-const insertHeaderField = (factIndex, headerIndex) =>
-    over(compose(factAt(factIndex), headerItems), insert(headerIndex, header('')))
+const rowsAt = (ruleIndex) => compose(ruleAt(ruleIndex), rows)
 
-const insertRuleCase = (ruleIndex, caseIndex) =>
-    over(compose(factAt(ruleIndex), rows), insert(caseIndex, ruleCase()))
+const rowAt = thenLensIndex(rows)
+const valueAt = (ruleIndex, caseIndex, path) =>
+    compose(ruleAt(ruleIndex), rowAt(caseIndex), lensPath(['children', ...path]))
 
-const insertValue = (ruleIndex, caseIndex, path, value) =>
-    set(compose(factAt(ruleIndex), rowAt(caseIndex), lensPath(['children', ...path])), value)
+const W = (f) => (x) => f(x)(x)
 
-const listCons = () => list([placeholder()], placeholder())
-const initStruct = (...headers) => struct(...headers.map((h) => [h, placeholder()]))
-
+const _ruleCase = (x) => ruleCase(...x)
 const varNameForHeader = (header) => header.varName || header.label
-const insertFactAsRule = (ruleIndex, rowIndex) => (state) => {
-    const headers = view(compose(factAt(ruleIndex), headerItems), state)
-    // TODO: compose
-    const ops = headers.map((header) => eq(varNameForHeader(header)))
+const defaultRowValue = compose(eq, varNameForHeader)
+const rowsForHeaders = compose(_ruleCase, map(defaultRowValue))
 
-    return over(
-        compose(factAt(ruleIndex), rows),
-        insert(rowIndex, ruleCase(...ops)),
-        state
+const insertFactAsRule = (ruleIndex, rowIndex) => W(pipe(
+    view(headersAt(ruleIndex)),
+    pipe(
+        rowsForHeaders,
+        insertL(compose(ruleAt(ruleIndex), rows), rowIndex),
     )
-}
+))
 
 const ruleFrames = [
     { program: program() },
-    addBlockToProgram(0, ruleBlock([header('')])),
+    insertL(programBlocks, 0, initRuleBlock()),
 
-    setHeader(0, 0, header('Item')),
-    insertHeaderField(0, 1),
-    setHeader(0, 1, header('Not in')),
-    setHeaderVar(0, 1, 'List'),
+    set(headerAt(0, 0), header('Item')),
+    insertL(headersAt(0), 1, header()),
+    set(headerAt(0, 1), header('Not in')),
+    set(headerVarAt(0, 1), 'List'),
 
-    insertRuleCase(0, 0),
-    insertValue(0, 0, [0], op('==')),
-    insertValue(0, 0, [0, 'lhs'], varr('List')),
-    insertValue(0, 0, [0, 'rhs'], list()),
+    insertL(rowsAt(0), 0, ruleCase()),
+    set(valueAt(0, 0, [0]), op('==')),
+    set(valueAt(0, 0, [0, 'lhs']), varr('List')),
+    set(valueAt(0, 0, [0, 'rhs']), list()),
 
-    insertRuleCase(0, 1),
-    insertValue(0, 1, [0], op('==')),
-    insertValue(0, 1, [0, 'lhs'], varr('List')),
-    insertValue(0, 1, [0, 'rhs'], listCons()),
-    insertValue(0, 1, [0, 'rhs', 'children', 0], varr('First')),
-    insertValue(0, 1, [0, 'rhs', 'tail'], varr('Rest')),
+    insertL(rowsAt(0), 1, ruleCase()),
+    set(valueAt(0, 1, [0]), op('==')),
+    set(valueAt(0, 1, [0, 'lhs']), varr('List')),
+    set(valueAt(0, 1, [0, 'rhs']), listCons()),
+    set(valueAt(0, 1, [0, 'rhs', 'children', 0]), varr('First')),
+    set(valueAt(0, 1, [0, 'rhs', 'tail']), varr('Rest')),
 
-    insertValue(0, 1, [1], op('!=')),
-    insertValue(0, 1, [1, 'lhs'], varr('Item')),
-    insertValue(0, 1, [1, 'rhs'], varr('First')),
+    set(valueAt(0, 1, [1]), op('!=')),
+    set(valueAt(0, 1, [1, 'lhs']), varr('Item')),
+    set(valueAt(0, 1, [1, 'rhs']), varr('First')),
 
-    insertValue(0, 1, [2], initStruct(header('Item'), header('Not in'))),
-    insertValue(0, 1, [2, 'children', 0, 1], varr('Item')),
-    insertValue(0, 1, [2, 'children', 1, 1], varr('Rest')),
+    set(valueAt(0, 1, [2]), initStruct(header('Item'), header('Not in'))),
+    set(valueAt(0, 1, [2, 'children', 0, 1]), varr('Item')),
+    set(valueAt(0, 1, [2, 'children', 1, 1]), varr('Rest')),
 ]
 
 const factsAsRules = [
     { program: program() },
-    addBlockToProgram(0, ruleBlock([header('')])),
-    setHeader(0, 0, header('From')),
-    insertHeaderField(0, 1),
-    setHeader(0, 1, header('To')),
-    insertHeaderField(0, 2),
-    setHeader(0, 2, header('Line')),
+    insertL(programBlocks, 0, initRuleBlock()),
+    set(headerAt(0, 0), header('From')),
+    insertL(headersAt(0), 1, header()),
+    set(headerAt(0, 1), header('To')),
+    insertL(headersAt(0), 2, header()),
+    set(headerAt(0, 2), header('Line')),
 
     insertFactAsRule(0, 0),
-    insertValue(0, 0, [0, 'rhs'], text('Park Street')),
-    insertValue(0, 0, [1, 'rhs'], text('Downtown Crossing')),
-    insertValue(0, 0, [2, 'rhs'], text('Red')),
+    set(valueAt(0, 0, [0, 'rhs']), text('Park Street')),
+    set(valueAt(0, 0, [1, 'rhs']), text('Downtown Crossing')),
+    set(valueAt(0, 0, [2, 'rhs']), text('Red')),
 
     insertFactAsRule(0, 1),
-    insertValue(0, 1, [0, 'rhs'], text('Park Street')),
-    insertValue(0, 1, [1, 'rhs'], text('Govt Center')),
-    insertValue(0, 1, [2, 'rhs'], text('Green')),
+    set(valueAt(0, 1, [0, 'rhs']), text('Park Street')),
+    set(valueAt(0, 1, [1, 'rhs']), text('Govt Center')),
+    set(valueAt(0, 1, [2, 'rhs']), text('Green')),
 ]
 
 const PlayerWrap = (props) =>
