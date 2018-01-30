@@ -150,6 +150,7 @@ const valuesAt = (ruleIndex, caseIndex) =>
     compose(ruleAt(ruleIndex), rowAt(caseIndex), childrenL)
 const valueAt = (ruleIndex, caseIndex, path) =>
     compose(ruleAt(ruleIndex), rowAt(caseIndex), childrenL, lensPath(path))
+const valueAtCursor = ({ block, rule, holes: [hole] }) => valueAt(block, rule, hole)
 
 const _ruleCase = (x) => ruleCase(...x)
 const varNameForHeader = (header) => header.varName || header.label
@@ -162,6 +163,23 @@ const cursorRuleField = lensPath(['cursor', 'rule'])
 const holes = lensPath(['cursor', 'holes'])
 
 const withCursor = (f) => W(pipe(view(cursor), f))
+
+const holesForRuleCase = () => enqueue(holes, [0])
+const holesForRuleLine = (values) => enqueue(holes, [values.length])
+const holesForOperator = ({ holes: [hole] }) => pipe(
+    enqueue(holes, [...hole, 'lhs']),
+    enqueue(holes, [...hole, 'rhs']),
+)
+const holesForCons = ({ holes: [hole] }) => pipe(
+    enqueue(holes, [...hole, 'children', 0]),
+    enqueue(holes, [...hole, 'tail']),
+)
+const holesForStruct = ({ holes: [hole] }, headers) => pipe(
+    ...headers.map((_, i) => enqueue(holes, [...hole, 'children', i, 1]))
+)
+const holesForFactAsRule = (headers) => pipe(
+    ...headers.map((_, i) => enqueue(holes, [i, 'rhs'])),
+)
 
 const reducer = match({
     // TODO: should this move the cursor focus to the header
@@ -188,61 +206,55 @@ const reducer = match({
     // handles incrementing rule
     addFirstRuleCase: () => pipe(
         withCursor(({ block }) => insertL(rowsAt(block), 0, ruleCase())),
-        enqueue(holes, [0])
+        holesForRuleCase(),
     ),
     addRuleCase: () => pipe(
         incL(cursorRuleField),
         withCursor(({ block, rule }) => insertL(rowsAt(block), rule, ruleCase())),
-        enqueue(holes, [0])
+        holesForRuleCase(),
     ),
     // TODO: should this be automatic when the 'hole queue' is empty?
     addRuleLine: () => pipe(
         W(pipe(
             withCursor(({ block, rule }) => view(valuesAt(block, rule))),
-            (values) => enqueue(holes, [values.length]),
+            holesForRuleLine,
         )),
-        withCursor(({ block, rule, holes: [hole] }) => set(valueAt(block, rule, hole), placeholder()))
+        withCursor((cursor) => set(valueAtCursor(cursor), placeholder()))
     ),
     addOperator: (operator) =>
-        withCursor(({ block, rule, holes: [hole] }) => pipe(
-            set(valueAt(block, rule, hole), op(operator)),
+        withCursor((cursor) => pipe(
+            set(valueAtCursor(cursor), op(operator)),
             dequeue(holes),
-            enqueue(holes, [...hole, 'lhs']),
-            enqueue(holes, [...hole, 'rhs']),
+            holesForOperator(cursor),
         )),
     addVar: (varName) =>
-        withCursor(({ block, rule, holes: [hole] }) => pipe(
-            set(valueAt(block, rule, hole), varr(varName)),
+        withCursor((cursor) => pipe(
+            set(valueAtCursor(cursor), varr(varName)),
             dequeue(holes),
         )),
     // should this be a distinct action from adding a cons list?
     // how would we represent optional holes?
     // does a comma need to be entered as an operator (i.e. before the value)?
     addEmptyList: () =>
-        withCursor(({ block, rule, holes: [hole] }) => pipe(
-            set(valueAt(block, rule, hole), list()),
+        withCursor((cursor) => pipe(
+            set(valueAtCursor(cursor), list()),
             dequeue(holes)
         )),
     addConsList: () =>
-        withCursor(({ block, rule, holes: [hole] }) => pipe(
-            set(valueAt(block, rule, hole), listCons()),
+        withCursor((cursor) => pipe(
+            set(valueAtCursor(cursor), listCons()),
             dequeue(holes),
-            enqueue(holes, [...hole, 'children', 0]),
-            enqueue(holes, [...hole, 'tail']),
+            holesForCons(cursor)
         )),
     addStruct: (headers) =>
-        withCursor(({ block, rule, holes: [hole] }) => pipe(
-            set(valueAt(block, rule, hole), initStruct(...headers.map(header))),
+        withCursor((cursor) => pipe(
+            set(valueAtCursor(cursor), initStruct(...headers.map(header))),
             dequeue(holes),
-            ...headers.map((_, i) =>
-                // TODO: make helper to abstract struct impl details, e.g.
-                // ...enqueueHolesForStruct(hole, headers)
-                // 'holes' could even hold lenses, not paths ??
-                enqueue(holes, [...hole, 'children', i, 1]))
+            holesForStruct(cursor, headers)
         )),
     addText: (textValue) =>
-        withCursor(({ block, rule, holes: [hole] }) => pipe(
-            set(valueAt(block, rule, hole), text(textValue)),
+        withCursor((cursor) => pipe(
+            set(valueAtCursor(cursor), text(textValue)),
             dequeue(holes)
         )),
 
@@ -252,7 +264,7 @@ const reducer = match({
             view(headersAt(block)),
             (headers) => pipe(
                 insertL(compose(ruleAt(block), rows), 0, rowsForHeaders(headers)),
-                ...headers.map((_, i) => enqueue(holes, [i, 'rhs'])),
+                holesForFactAsRule(headers)
             )
         ))),
     addFactAsRule: () => W(
@@ -261,7 +273,7 @@ const reducer = match({
             (headers) => pipe(
                 incL(cursorRuleField),
                 insertL(compose(ruleAt(block), rows), rule + 1, rowsForHeaders(headers)),
-                ...headers.map((_, i) => enqueue(holes, [i, 'rhs'])),
+                holesForFactAsRule(headers)
             )
         ))),
 
@@ -343,7 +355,7 @@ storiesOf('Demo', module)
         ]))
     .add('edit rule', () =>
         h(PlayerWrap, {
-            // showAll: true,
+            showAll: true,
             frames: applyFrames(ruleFrames).map((state, i) => h('div', [
                 h(Program, { key: i, ...state }),
                 // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
