@@ -157,6 +157,7 @@ const cursorBlockField = lensPath(['cursor', 'block'])
 const cursorHeaderField = lensPath(['cursor', 'headerField'])
 const cursorRuleField = lensPath(['cursor', 'rule'])
 const holes = lensPath(['cursor', 'holes'])
+const cursorFocus = lensPath(['cursor', 'focus'])
 
 const W = (f) => (x) => f(x)(x)
 const withView = curry((lens, f) => W(compose(f, view(lens))))
@@ -185,22 +186,32 @@ const appendAndUpdateCursor = (lensToValues, lensToCursor, tailValue) => pipe(
     withView(lensToValues, (xs) => set(lensToCursor, xs.length - 1))
 )
 
-const reducer = match({
-    // TODO `insertFooAt(index)`, `moveFoo(from, to)` etc
+const resetRuleCase = set(cursorRuleField, 0)
+const resetHeaderField = set(cursorHeaderField, 0)
+const resetHoles = set(holes, [])
 
-    // TODO: should this move the cursor focus to the header
-    // or change to "header is focused" state?
+// TODO: these are used for selecting which actions are meaningful in a given context
+const focusHeader = set(cursorFocus, 'header')
+const focusBody = set(cursorFocus, 'body')
+
+const reducer = match({
+    // TODO `selectFooAt(path)`, `insertFooAt(index)`, `moveFoo(from, to)` etc
     appendBlock: () => pipe(
         appendAndUpdateCursor(programBlocks, cursorBlockField, initRuleBlock()),
-        set(cursorRuleField, 0),
-        set(cursorHeaderField, 0)
+        resetRuleCase,
+        resetHoles,
+        resetHeaderField,
+        focusHeader,
     ),
     appendRuleCase: () => withCursor((cursor) => pipe(
         appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, ruleCase()),
-        holesForRuleCase
+        resetHoles,
+        holesForRuleCase,
+        focusBody,
     )),
     appendRuleLine: () => withCursor((cursor) => pipe(
         appendL(allValuesAt(cursor), placeholder()),
+        resetHoles,
         withView(allValuesAt(cursor), holesForRuleLine),
     )),
     appendHeaderField: () => withCursor((cursor) =>
@@ -209,13 +220,14 @@ const reducer = match({
     appendFactAsRule: () => withCursor((cursor) =>
         withView(allHeadersAt(cursor), (headers) => pipe(
             appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, rowsForHeaders(headers)),
-            holesForFactAsRule(headers)
+            resetHoles,
+            holesForFactAsRule(headers),
+            focusBody,
         ))
     ),
 
-    // TODO: are these only meaningful in a "header is focused" state?
     setHeader: (label) => withCursor((cursor) =>
-        set(headerAt(cursor), header(label)),
+        over(headerAt(cursor), (h) => header(label, h && h.varName)),
     ),
     setHeaderVar: (varName) => withCursor((cursor) =>
         set(headerVarAt(cursor), varName)
@@ -253,7 +265,7 @@ const reducer = match({
     )),
 }, {
     program: program(),
-    cursor: { block: 0, rule: 0, headerField: 0, holes: [] },
+    cursor: { block: 0, rule: 0, headerField: 0, holes: [], focus: 'body' },
 })
 
 const dispatch = (type, payload) => (state) => reducer(state, { type, payload })
