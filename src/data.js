@@ -154,10 +154,10 @@ export const reducer = match({
         ))
     ),
 
-    // TODO: changing this should change references in body
     setHeader: (header) => withCursor((cursor) =>
         set(headerAt(cursor), header)
     ),
+    // TODO: setHeaderLabel (changes label without changing ID)
     setHeaderVar: (varName) => withCursor((cursor) =>
         set(headerVarAt(cursor), varName)
     ),
