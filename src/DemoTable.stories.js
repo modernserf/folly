@@ -1,5 +1,5 @@
 import h from 'react-hyperscript'
-import { uncurryN, last, lensPath, lensIndex, view, set, over, compose, insert, pipe, map, inc, append } from 'ramda'
+import { uncurryN, last, lensPath, lensIndex, view, set, over, compose, pipe, map, append } from 'ramda'
 import shortid from 'shortid'
 import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
@@ -121,10 +121,9 @@ const dataRulesOnly = {
         )
     ),
 }
-const insertL = uncurryN(3, (lens) => compose(over(lens), insert))
-const incL = uncurryN(2, (lens) => over(lens, inc))
 const enqueue = uncurryN(2, (lens) => compose(over(lens), append))
 const dequeue = (lens) => over(lens, (xs) => xs.slice(1))
+const appendL = enqueue
 
 const thenLensIndex = (aLens) => (index) => compose(aLens, lensIndex(index))
 
@@ -158,13 +157,16 @@ const defaultRowValue = compose(eq, varNameForHeader)
 const rowsForHeaders = compose(_ruleCase, map(defaultRowValue))
 
 const cursor = lensPath(['cursor'])
+const cursorBlockField = lensPath(['cursor', 'block'])
 const cursorHeaderField = lensPath(['cursor', 'headerField'])
 const cursorRuleField = lensPath(['cursor', 'rule'])
 const holes = lensPath(['cursor', 'holes'])
 
-const withCursor = (f) => W(pipe(view(cursor), f))
+const withView = (lens, f) => W(pipe(view(lens), f))
+const withCursor = (f) => withView(cursor, f)
 
-const holesForRuleCase = () => enqueue(holes, [0])
+const consumeHole = dequeue(holes)
+const holesForRuleCase = enqueue(holes, [0])
 const holesForRuleLine = (values) => enqueue(holes, [values.length])
 const holesForOperator = ({ holes: [hole] }) => pipe(
     enqueue(holes, [...hole, 'lhs']),
@@ -181,13 +183,39 @@ const holesForFactAsRule = (headers) => pipe(
     ...headers.map((_, i) => enqueue(holes, [i, 'rhs'])),
 )
 
+const appendAndUpdateCursor = (lensToValue, lensToCursor, value) => pipe(
+    appendL(lensToValue, value),
+    withView(lensToValue, (value) => set(lensToCursor, value.length - 1))
+)
+
 const reducer = match({
+    // TODO `insertFooAt(index)`, `moveFoo(from, to)` etc
+
     // TODO: should this move the cursor focus to the header
     // or change to "header is focused" state?
-    // TODO: and should this reset the rule / headerField cursor position?
-    insertBlockAtCursor: () => withCursor(
-        ({ block }) => insertL(programBlocks, block, initRuleBlock())
+    appendBlock: () => pipe(
+        appendAndUpdateCursor(programBlocks, cursorBlockField, initRuleBlock()),
+        set(cursorRuleField, 0),
+        set(cursorHeaderField, 0)
     ),
+    appendRuleCase: () => withCursor(({ block }) => pipe(
+        appendAndUpdateCursor(rowsAt(block), cursorRuleField, ruleCase()),
+        holesForRuleCase
+    )),
+    appendRuleLine: () => withCursor(({ block, rule }) => pipe(
+        appendL(valuesAt(block, rule), placeholder()),
+        withView(valuesAt(block, rule), holesForRuleLine)
+    )),
+    appendHeaderField: () => withCursor(({ block }) =>
+        appendAndUpdateCursor(headersAt(block), cursorHeaderField, header())
+    ),
+    appendFactAsRule: () => withCursor(({ block }) =>
+        withView(headersAt(block), (headers) => pipe(
+            appendAndUpdateCursor(compose(ruleAt(block), rows), cursorRuleField, rowsForHeaders(headers)),
+            holesForFactAsRule(headers)
+        ))
+    ),
+
     // TODO: are these only meaningful in a "header is focused" state?
     setHeader: (label) => withCursor(
         ({ block, headerField }) => set(headerAt(block, headerField), header(label)),
@@ -195,138 +223,87 @@ const reducer = match({
     setHeaderVar: (varName) => withCursor(
         ({ block, headerField }) => set(headerVarAt(block, headerField), varName)
     ),
-    newHeaderField: () => pipe(
-        incL(cursorHeaderField),
-        withCursor(
-            ({ block, headerField }) => insertL(headersAt(block), headerField, header())
-        )
-    ),
-    // TODO: same action, separate states for 'first rule' / 'additional rule'
-    // OR: addRuleCase (to end) vs insertRuleCase (at index)
-    // handles incrementing rule
-    addFirstRuleCase: () => pipe(
-        withCursor(({ block }) => insertL(rowsAt(block), 0, ruleCase())),
-        holesForRuleCase(),
-    ),
-    addRuleCase: () => pipe(
-        incL(cursorRuleField),
-        withCursor(({ block, rule }) => insertL(rowsAt(block), rule, ruleCase())),
-        holesForRuleCase(),
-    ),
-    // TODO: should this be automatic when the 'hole queue' is empty?
-    addRuleLine: () => pipe(
-        W(pipe(
-            withCursor(({ block, rule }) => view(valuesAt(block, rule))),
-            holesForRuleLine,
-        )),
-        withCursor((cursor) => set(valueAtCursor(cursor), placeholder()))
-    ),
-    addOperator: (operator) =>
-        withCursor((cursor) => pipe(
-            set(valueAtCursor(cursor), op(operator)),
-            dequeue(holes),
-            holesForOperator(cursor),
-        )),
-    addVar: (varName) =>
-        withCursor((cursor) => pipe(
-            set(valueAtCursor(cursor), varr(varName)),
-            dequeue(holes),
-        )),
+
+    addOperator: (operator) => withCursor((cursor) => pipe(
+        set(valueAtCursor(cursor), op(operator)),
+        consumeHole,
+        holesForOperator(cursor),
+    )),
+    addVar: (varName) => withCursor((cursor) => pipe(
+        set(valueAtCursor(cursor), varr(varName)),
+        consumeHole,
+    )),
     // should this be a distinct action from adding a cons list?
     // how would we represent optional holes?
     // does a comma need to be entered as an operator (i.e. before the value)?
-    addEmptyList: () =>
-        withCursor((cursor) => pipe(
-            set(valueAtCursor(cursor), list()),
-            dequeue(holes)
-        )),
-    addConsList: () =>
-        withCursor((cursor) => pipe(
-            set(valueAtCursor(cursor), listCons()),
-            dequeue(holes),
-            holesForCons(cursor)
-        )),
-    addStruct: (headers) =>
-        withCursor((cursor) => pipe(
-            set(valueAtCursor(cursor), initStruct(...headers.map(header))),
-            dequeue(holes),
-            holesForStruct(cursor, headers)
-        )),
-    addText: (textValue) =>
-        withCursor((cursor) => pipe(
-            set(valueAtCursor(cursor), text(textValue)),
-            dequeue(holes)
-        )),
-
-    // TODO: see `add(First)RuleCase`
-    addFirstFactAsRule: () => W(
-        withCursor(({ block }) => pipe(
-            view(headersAt(block)),
-            (headers) => pipe(
-                insertL(compose(ruleAt(block), rows), 0, rowsForHeaders(headers)),
-                holesForFactAsRule(headers)
-            )
-        ))),
-    addFactAsRule: () => W(
-        withCursor(({ block, rule }) => pipe(
-            view(headersAt(block)),
-            (headers) => pipe(
-                incL(cursorRuleField),
-                insertL(compose(ruleAt(block), rows), rule + 1, rowsForHeaders(headers)),
-                holesForFactAsRule(headers)
-            )
-        ))),
-
+    addEmptyList: () => withCursor((cursor) => pipe(
+        set(valueAtCursor(cursor), list()),
+        dequeue(holes)
+    )),
+    addConsList: () => withCursor((cursor) => pipe(
+        set(valueAtCursor(cursor), listCons()),
+        consumeHole,
+        holesForCons(cursor)
+    )),
+    addStruct: (headers) => withCursor((cursor) => pipe(
+        set(valueAtCursor(cursor), initStruct(...headers.map(header))),
+        consumeHole,
+        holesForStruct(cursor, headers)
+    )),
+    addText: (textValue) => withCursor((cursor) => pipe(
+        set(valueAtCursor(cursor), text(textValue)),
+        dequeue(holes)
+    )),
 }, { program: program(), cursor: { block: 0, rule: 0, headerField: 0, holes: [] } })
 
 const dispatch = (type, payload) => (state) => reducer(state, { type, payload })
 
 const ruleFrames = [
-    dispatch('insertBlockAtCursor'),
+    dispatch('appendBlock'),
 
     dispatch('setHeader', 'Item'),
-    dispatch('newHeaderField'),
+    dispatch('appendHeaderField'),
     dispatch('setHeader', 'Not in'),
     dispatch('setHeaderVar', 'List'),
 
-    dispatch('addFirstRuleCase'),
+    dispatch('appendRuleCase'),
     dispatch('addOperator', '=='),
     dispatch('addVar', 'List'),
     dispatch('addEmptyList'),
 
-    dispatch('addRuleCase'),
+    dispatch('appendRuleCase'),
     dispatch('addOperator', '=='),
     dispatch('addVar', 'List'),
     dispatch('addConsList'),
     dispatch('addVar', 'First'),
     dispatch('addVar', 'Rest'),
 
-    dispatch('addRuleLine'),
+    dispatch('appendRuleLine'),
     dispatch('addOperator', '!='),
     dispatch('addVar', 'Item'),
     dispatch('addVar', 'First'),
 
-    dispatch('addRuleLine'),
+    dispatch('appendRuleLine'),
     dispatch('addStruct', ['Item', 'Not in']),
     dispatch('addVar', 'Item'),
     dispatch('addVar', 'Rest'),
 ]
 
 const factsAsRules = [
-    dispatch('insertBlockAtCursor'),
+    dispatch('appendBlock'),
 
     dispatch('setHeader', 'From'),
-    dispatch('newHeaderField'),
+    dispatch('appendHeaderField'),
     dispatch('setHeader', 'To'),
-    dispatch('newHeaderField'),
+    dispatch('appendHeaderField'),
     dispatch('setHeader', 'Line'),
 
-    dispatch('addFirstFactAsRule'),
+    dispatch('appendFactAsRule'),
     dispatch('addText', 'Park Street'),
     dispatch('addText', 'Downtown Crossing'),
     dispatch('addText', 'Red'),
 
-    dispatch('addFactAsRule'),
+    dispatch('appendFactAsRule'),
     dispatch('addText', 'Park Street'),
     dispatch('addText', 'Govt Center'),
     dispatch('addText', 'Green'),
