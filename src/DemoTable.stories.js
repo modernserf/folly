@@ -5,7 +5,7 @@ import { storiesOf } from '@storybook/react'
 import { Player, Range } from './story'
 import { Program } from './DemoTable'
 
-import { reducer, program, ruleBlock, header, ruleCase, varr, text, op, eq, struct, list, comment } from './data'
+import { reducer, program, ruleBlock, header, ruleCase, varr, op, struct, list } from './data'
 
 export const Container = styled.div`
     width: 375px;
@@ -20,115 +20,47 @@ export const Container = styled.div`
     overflow: auto;
 `
 
-const dataRulesOnly = {
-    program: program(
-        ruleBlock(
-            [header('Station')],
-            ruleCase(eq('Station', text('Park Street'))),
-            ruleCase(eq('Station', text('Downtown Crossing'))),
-            ruleCase(eq('Station', text('Govt Center')))
-        ),
-        ruleBlock(
-            [header('From'), header('To'), header('Line')],
-            ruleCase(
-                eq('From', text('Park Street')),
-                eq('To', text('Downtown Crossing')),
-                eq('Line', text('Red')),
-            ),
-            ruleCase(
-                eq('From', text('Park Street')),
-                eq('To', text('Govt Center')),
-                eq('Line', text('Green')),
-            ),
-            ruleCase(
-                eq('From', text('State Street')),
-                eq('To', text('Downtown Crossing')),
-                eq('Line', text('Orange')),
-            ),
-        ),
-        ruleBlock(
-            [header('Item'), header('Not in', 'List')],
-            ruleCase(
-                op('==', varr('List'), list())
-            ),
-            ruleCase(
-                op('==', varr('List'), list([varr('First')], varr('Rest'))),
-                op('!=', varr('Item'), varr('First')),
-                struct(
-                    [header('Item'), varr('Item')],
-                    [header('Not in'), varr('Rest')]
-                )
-            )
-        ),
-        ruleBlock(
-            [header('From'), header('To'), header('Path')],
-            ruleCase(
-                comment(op('==', varr('From'), varr('Path'))),
-                op('==', varr('From'), varr('To')),
-                op('==', varr('Path'), list())
-            ),
-            ruleCase(
-                op('==', varr('Path'), list([varr('Link')], varr('Rest'))),
-                struct(
-                    [header('From'), varr('From')],
-                    [header('To'), varr('Next')],
-                    [header('Link'), varr('Link')]
-                ),
-                struct(
-                    [header('Item'), varr('Link')],
-                    [header('Not in'), varr('Rest')],
-                ),
-                struct(
-                    [header('From'), varr('Next')],
-                    [header('To'), varr('To')],
-                    [header('Path'), varr('Rest')]
-                )
-            )
-        )
-    ),
-}
-
 const dispatch = (type, payload) => (state) => reducer(state, { type, payload })
 
 const ruleFrames = [
     dispatch('appendBlock'),
 
-    dispatch('setHeader', 'Item'),
+    dispatch('setHeader', header('Item', undefined, 'item')),
     dispatch('appendHeaderField'),
-    dispatch('setHeader', 'Not in'),
+    dispatch('setHeader', header('Not in', undefined, 'not_in')),
     dispatch('setHeaderVar', 'List'),
 
     dispatch('appendRuleCase'),
     dispatch('addOperator', '=='),
-    dispatch('addVar', 'List'),
+    dispatch('addVar', 'not_in'),
     dispatch('addEmptyList'),
 
     dispatch('appendRuleCase'),
     dispatch('addOperator', '=='),
-    dispatch('addVar', 'List'),
+    dispatch('addVar', 'not_in'),
     dispatch('addConsList'),
-    dispatch('addVar', 'First'),
-    dispatch('addVar', 'Rest'),
+    dispatch('addNewVar', { label: 'First', id: 'first' }),
+    dispatch('addNewVar', { label: 'Rest', id: 'rest' }),
 
     dispatch('appendRuleLine'),
     dispatch('addOperator', '!='),
-    dispatch('addVar', 'Item'),
-    dispatch('addVar', 'First'),
+    dispatch('addVar', 'item'),
+    dispatch('addVar', 'first'),
 
     dispatch('appendRuleLine'),
     dispatch('addStruct', ['Item', 'Not in']),
-    dispatch('addVar', 'Item'),
-    dispatch('addVar', 'Rest'),
+    dispatch('addVar', 'item'),
+    dispatch('addVar', 'rest'),
 ]
 
 const factsAsRules = [
     dispatch('appendBlock'),
 
-    dispatch('setHeader', 'From'),
+    dispatch('setHeader', header('From')),
     dispatch('appendHeaderField'),
-    dispatch('setHeader', 'To'),
+    dispatch('setHeader', header('To')),
     dispatch('appendHeaderField'),
-    dispatch('setHeader', 'Line'),
+    dispatch('setHeader', header('Line')),
 
     dispatch('appendFactAsRule'),
     dispatch('addText', 'Park Street'),
@@ -147,16 +79,18 @@ const editingFields = [
         ...state,
         program: program(
             ruleBlock(
-                [header('Item'), header('Not in', 'List')],
+                [header('Item', undefined, 'item'), header('Not in', 'List', 'not_in')],
                 ruleCase(
-                    op('==', varr('Not in'), list())
+                    {},
+                    op('==', varr('not_in'), list())
                 ),
                 ruleCase(
-                    op('==', varr('List'), list([varr('First')], varr('Rest'))),
-                    op('!=', varr('Item'), varr('First')),
+                    { first: 'First', rest: 'Rest' },
+                    op('==', varr('not_in'), list([varr('first')], varr('rest'))),
+                    op('!=', varr('item'), varr('first')),
                     struct(
-                        [header('Item'), varr('Item')],
-                        [header('Not in'), varr('Rest')]
+                        [header('Item'), varr('item')],
+                        [header('Not in'), varr('rest')]
                     )
                 )
             )
@@ -185,10 +119,6 @@ const applyFrames = (data) => data.reduce((items, next) =>
 [])
 
 storiesOf('Demo', module)
-    .add('table', () =>
-        h(Container, [
-            h(Program, dataRulesOnly),
-        ]))
     .add('create rule', () =>
         h(PlayerWrap, {
             showAll: true,

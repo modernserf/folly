@@ -5,17 +5,19 @@ const match = (handlers, initState) => (state = initState, action) => handlers[a
     ? handlers[action.type](action.payload)(state)
     : state
 
-const slugify = (x) => x.toLowerCase().replace(/\s/g, '_')
-const colonize = (header) => header.map((h) => `${h.id}:`).join('')
-
 export const program = (...children) => ({ type: 'program', children })
 
-export const header = (label = '', varName) => ({ type: 'headerCell', id: slugify(label), label, varName })
+export const header = (label = '', varName, id = shortid.generate()) => ({
+    type: 'headerCell',
+    id,
+    label,
+    varName,
+})
 export const text = (label) => ({ type: 'text', id: shortid.generate(), label })
 
 export const ruleBlock = (headers, ...children) => ({
     type: 'ruleBlock',
-    id: colonize(headers),
+    id: shortid.generate(),
     header: {
         type: 'headerRow',
         children: headers,
@@ -23,10 +25,16 @@ export const ruleBlock = (headers, ...children) => ({
     children,
 })
 
+export const ruleCase = (freeVars, ...children) => ({
+    type: 'ruleCase',
+    id: shortid.generate(),
+    freeVars,
+    children,
+})
+
 export const placeholder = () => ({ type: 'placeholder' })
-export const ruleCase = (...children) => ({ type: 'ruleCase', id: shortid.generate(), children })
 export const op = (operator, lhs = placeholder(), rhs = placeholder()) => ({ type: 'operator', operator, lhs, rhs })
-export const varr = (label) => ({ type: 'var', label })
+export const varr = (id) => ({ type: 'var', id })
 export const list = (children = [], tail) => ({ type: 'list', children, tail })
 export const struct = (...children) => ({ type: 'struct', children })
 export const comment = (body) => ({ type: 'comment', body })
@@ -50,6 +58,7 @@ const _headerItems = lensPath(['header', 'children'])
 const _headerAt = thenLensIndex(_headerItems)
 const _headerVarName = lensPath(['varName'])
 const _ruleAt = thenLensIndex(_rows)
+const _freeVarsL = lensPath(['freeVars'])
 
 const allHeadersAt = ({ block }) =>
     compose(_blockAt(block), _headerItems)
@@ -63,10 +72,11 @@ const allValuesAt = ({ block, rule }) =>
     compose(_blockAt(block), _ruleAt(rule), childrenL)
 const valueAt = ({ block, rule, holes: [hole] }) =>
     compose(_blockAt(block), _ruleAt(rule), childrenL, lensPath(hole))
+const freeVarAt = ({ block, rule }, id) =>
+    compose(_blockAt(block), _ruleAt(rule), _freeVarsL, lensPath([id]))
 
-const _ruleCase = (x) => ruleCase(...x)
-const varNameForHeader = (header) => header.varName || header.label
-const defaultRowValue = compose(eq, varNameForHeader)
+const _ruleCase = (x) => ruleCase({}, ...x)
+const defaultRowValue = compose(eq, (h) => h.id)
 const rowsForHeaders = compose(_ruleCase, map(defaultRowValue))
 
 const cursor = lensPath(['cursor'])
@@ -121,10 +131,11 @@ export const reducer = match({
         focusHeader,
     ),
     appendRuleCase: () => withCursor((cursor) => pipe(
-        appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, ruleCase()),
+        appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, ruleCase({})),
         resetHoles,
         holesForRuleCase,
         focusBody,
+        withCursor((nextCursor) => set(valueAt(nextCursor), placeholder()))
     )),
     appendRuleLine: () => withCursor((cursor) => pipe(
         appendL(allValuesAt(cursor), placeholder()),
@@ -144,8 +155,8 @@ export const reducer = match({
     ),
 
     // TODO: changing this should change references in body
-    setHeader: (label) => withCursor((cursor) =>
-        over(headerAt(cursor), (h) => header(label, h && h.varName)),
+    setHeader: (header) => withCursor((cursor) =>
+        set(headerAt(cursor), header)
     ),
     setHeaderVar: (varName) => withCursor((cursor) =>
         set(headerVarAt(cursor), varName)
@@ -156,9 +167,14 @@ export const reducer = match({
         consumeHole,
         holesForOperator(cursor),
     )),
-    addVar: (varName) => withCursor((cursor) => pipe(
-        set(valueAt(cursor), varr(varName)),
+    addVar: (id) => withCursor((cursor) => pipe(
+        set(valueAt(cursor), varr(id)),
         consumeHole,
+    )),
+    addNewVar: ({ id, label }) => withCursor((cursor) => pipe(
+        set(freeVarAt(cursor, id), label),
+        set(valueAt(cursor), varr(id)),
+        consumeHole
     )),
     // should this be a distinct action from adding a cons list?
     // how would we represent optional holes?

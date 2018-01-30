@@ -11,23 +11,30 @@ const Operator = styled.span`
     margin: 0 4px;
     font-family: 'Fira Code', monospace;
 `
-const OperatorForm = ({ operator, lhs, rhs }) =>
-    h('span', [ h(Form, lhs), h(Operator, [operator]), h(Form, rhs) ])
+const OperatorForm = ({ ctx, operator, lhs, rhs }) =>
+    h('span', [ h(Form, { ctx, ...lhs }), h(Operator, [operator]), h(Form, { ctx, ...rhs }) ])
+
+const varName = (ctx, id) => {
+    if (ctx.freeVars[id]) { return ctx.freeVars[id] }
+    const value = ctx.header.children.find((h) => h.id === id)
+    if (!value) { throw new Error('undeclared var ' + id) }
+    return value.varName || value.label
+}
 
 const Var = styled.span`
     display: inline-block;
     color: green;
 `
-const VarForm = ({ label }) => h(Var, [label])
+const VarForm = ({ ctx, id }) => h(Var, [varName(ctx, id)])
 
 const List = styled.span`
     display: inline-block;
 `
-const ListForm = ({ children, tail }) =>
+const ListForm = ({ ctx, children, tail }) =>
     h(List, [
         '[',
-        ...children.map((props, i) => h(Form, { key: i, ...props })),
-        tail ? h('span', [' | ', h(Form, { key: 'tail', ...tail })]) : null,
+        ...children.map((props, i) => h(Form, { key: i, ctx, ...props })),
+        tail ? h('span', [' | ', h(Form, { key: 'tail', ctx, ...tail })]) : null,
         ']',
     ])
 
@@ -100,26 +107,28 @@ const Value = styled.td`
     text-align: left;
 `
 
-const StructTable = ({ children }) =>
+const StructTable = ({ ctx, children }) =>
     h(StructTableWrap, [
         h('tbody', [
-            ...children.map(([header, value], i) =>
-                h('tr', { key: header.id }, [
-                    h(Head, [header.label, ':']),
-                    h(Value, [h(Form, value)]),
+            ...children.map(([{ id, label }, value]) =>
+                h('tr', { key: id }, [
+                    h(Head, [label, ':']),
+                    h(Value, [h(Form, { ctx, ...value })]),
                 ])
             ),
         ]),
     ])
 
-const StructForm = ({ children }) => h(OverflowHandler, {
-    fallback: h(StructTable, { children }),
+const StructForm = ({ ctx, children }) => h(OverflowHandler, {
+    fallback: h(StructTable, { ctx, children }),
 }, [
+    // TODO: this should look up structure from some sorta global scope
+    // i.e. given id `12345`, return ['Foo', 'Bar']
     h(Struct, [
-        ...children.map(([header, value], i) =>
-            h(StructEntry, { key: i }, [
-                h(StructLabel, [header.label, ':']),
-                h(Form, value),
+        ...children.map(([{ id, label }, value]) =>
+            h(StructEntry, { key: id }, [
+                h(StructLabel, [label, ':']),
+                h(Form, { ctx, ...value }),
             ])),
     ]),
 ])
@@ -146,8 +155,8 @@ const Comment = styled.span`
 
 `
 
-const CommentForm = ({ body }) =>
-    h(Comment, [h(Form, body)])
+const CommentForm = ({ ctx, body }) =>
+    h(Comment, [h(Form, { ctx, ...body })])
 
 const Form = (props) => match(props.type, {
     text: () => h(TextForm, props),
@@ -201,11 +210,9 @@ const RuleBlock = ({ header, children }) =>
                 ])
             ),
         ]),
-        ...children.map(({ id, children }) =>
-            h(RuleCase, children.length
-                ? children.map((props, i) =>
-                    h(RuleRow, [ h(Form, { key: i, ...props }) ]))
-                : [h(RuleRow, [ h(PlaceholderForm) ])]
+        ...children.map(({ id, children, freeVars }) =>
+            h(RuleCase, children.map((props, i) =>
+                h(RuleRow, [ h(Form, { key: i, ctx: { header, freeVars }, ...props }) ]))
             )
         ),
     ])
