@@ -2,7 +2,7 @@ import { Component } from 'react'
 import h from 'react-hyperscript'
 import styled from 'styled-components'
 
-const match = (key, opts) => opts[key]()
+const match = (key, opts) => opts[key] ? opts[key]() : h('span', ['UNKNOWN KEY:', key])
 
 const TextForm = ({ label }) => h('span', [label])
 
@@ -132,6 +132,23 @@ const PlaceholderForm = styled.span`
     background-color: #ccf;
 `
 
+const Comment = styled.span`
+    display: inline-block;
+    &:after {
+        content: "";
+        position: absolute;
+        bottom: 50%;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border-bottom: 4px solid rgba(200,0,0,0.3);
+    }
+
+`
+
+const CommentForm = ({ body }) =>
+    h(Comment, [h(Form, body)])
+
 const Form = (props) => match(props.type, {
     text: () => h(TextForm, props),
     operator: () => h(OperatorForm, props),
@@ -139,6 +156,7 @@ const Form = (props) => match(props.type, {
     list: () => h(ListForm, props),
     struct: () => h(StructForm, props),
     placeholder: () => h(PlaceholderForm, props),
+    comment: () => h(CommentForm, props),
 })
 
 const RuleBlockWrap = styled.div`

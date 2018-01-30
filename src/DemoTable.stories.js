@@ -1,10 +1,11 @@
 import h from 'react-hyperscript'
-import { curry, uncurryN, last, lensPath, lensIndex, view, set, over, compose, pipe, map, append } from 'ramda'
-import shortid from 'shortid'
+import { last } from 'ramda'
 import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
 import { Player, Range } from './story'
 import { Program } from './DemoTable'
+
+import { reducer, program, ruleBlock, header, ruleCase, varr, text, op, eq, struct, list, comment } from './data'
 
 export const Container = styled.div`
     width: 375px;
@@ -18,40 +19,6 @@ export const Container = styled.div`
     color: #333;
     overflow: auto;
 `
-
-const match = (handlers, initState) => (state = initState, action) => handlers[action.type]
-    ? handlers[action.type](action.payload)(state)
-    : state
-
-const slugify = (x) => x.toLowerCase().replace(/\s/g, '_')
-const colonize = (header) => header.map((h) => `${h.id}:`).join('')
-
-const program = (...children) => ({ type: 'program', children })
-
-const header = (label = '', varName) => ({ type: 'headerCell', id: slugify(label), label, varName })
-const text = (label) => ({ type: 'text', id: shortid.generate(), label })
-
-const ruleBlock = (headers, ...children) => ({
-    type: 'ruleBlock',
-    id: colonize(headers),
-    header: {
-        type: 'headerRow',
-        children: headers,
-    },
-    children,
-})
-
-const placeholder = () => ({ type: 'placeholder' })
-const ruleCase = (...children) => ({ type: 'ruleCase', id: shortid.generate(), children })
-const op = (operator, lhs = placeholder(), rhs = placeholder()) => ({ type: 'operator', operator, lhs, rhs })
-const varr = (label) => ({ type: 'var', label })
-const list = (children = [], tail) => ({ type: 'list', children, tail })
-const struct = (...children) => ({ type: 'struct', children })
-
-const listCons = () => list([placeholder()], placeholder())
-const initStruct = (...headers) => struct(...headers.map((h) => [h, placeholder()]))
-const eq = (varName, rhs) => op('==', varr(varName), rhs)
-const initRuleBlock = () => ruleBlock([header()])
 
 const dataRulesOnly = {
     program: program(
@@ -96,6 +63,7 @@ const dataRulesOnly = {
         ruleBlock(
             [header('From'), header('To'), header('Path')],
             ruleCase(
+                comment(op('==', varr('From'), varr('Path'))),
                 op('==', varr('From'), varr('To')),
                 op('==', varr('Path'), list())
             ),
@@ -119,154 +87,6 @@ const dataRulesOnly = {
         )
     ),
 }
-const enqueue = uncurryN(2, (lens) => compose(over(lens), append))
-const dequeue = (lens) => over(lens, (xs) => xs.slice(1))
-const appendL = enqueue
-
-const thenLensIndex = (aLens) => (index) => compose(aLens, lensIndex(index))
-
-const childrenL = lensPath(['children'])
-const programBlocks = lensPath(['program', 'children'])
-const _blockAt = thenLensIndex(programBlocks)
-const _rows = childrenL
-const _headerItems = lensPath(['header', 'children'])
-const _headerAt = thenLensIndex(_headerItems)
-const _headerVarName = lensPath(['varName'])
-const _ruleAt = thenLensIndex(_rows)
-
-const allHeadersAt = ({ block }) =>
-    compose(_blockAt(block), _headerItems)
-const headerAt = ({ block, headerField }) =>
-    compose(_blockAt(block), _headerAt(headerField))
-const headerVarAt = (cursor) =>
-    compose(headerAt(cursor), _headerVarName)
-const allRowsAt = ({ block }) =>
-    compose(_blockAt(block), _rows)
-const allValuesAt = ({ block, rule }) =>
-    compose(_blockAt(block), _ruleAt(rule), childrenL)
-const valueAt = ({ block, rule, holes: [hole] }) =>
-    compose(_blockAt(block), _ruleAt(rule), childrenL, lensPath(hole))
-
-const _ruleCase = (x) => ruleCase(...x)
-const varNameForHeader = (header) => header.varName || header.label
-const defaultRowValue = compose(eq, varNameForHeader)
-const rowsForHeaders = compose(_ruleCase, map(defaultRowValue))
-
-const cursor = lensPath(['cursor'])
-const cursorBlockField = lensPath(['cursor', 'block'])
-const cursorHeaderField = lensPath(['cursor', 'headerField'])
-const cursorRuleField = lensPath(['cursor', 'rule'])
-const holes = lensPath(['cursor', 'holes'])
-const cursorFocus = lensPath(['cursor', 'focus'])
-
-const W = (f) => (x) => f(x)(x)
-const withView = curry((lens, f) => W(compose(f, view(lens))))
-const withCursor = withView(cursor)
-
-const consumeHole = dequeue(holes)
-const holesForRuleCase = enqueue(holes, [0])
-const holesForRuleLine = (xs) => enqueue(holes, [xs.length - 1])
-const holesForOperator = ({ holes: [hole] }) => pipe(
-    enqueue(holes, [...hole, 'lhs']),
-    enqueue(holes, [...hole, 'rhs']),
-)
-const holesForCons = ({ holes: [hole] }) => pipe(
-    enqueue(holes, [...hole, 'children', 0]),
-    enqueue(holes, [...hole, 'tail']),
-)
-const holesForStruct = ({ holes: [hole] }, headers) => pipe(
-    ...headers.map((_, i) => enqueue(holes, [...hole, 'children', i, 1]))
-)
-const holesForFactAsRule = (headers) => pipe(
-    ...headers.map((_, i) => enqueue(holes, [i, 'rhs'])),
-)
-
-const appendAndUpdateCursor = (lensToValues, lensToCursor, tailValue) => pipe(
-    appendL(lensToValues, tailValue),
-    withView(lensToValues, (xs) => set(lensToCursor, xs.length - 1))
-)
-
-const resetRuleCase = set(cursorRuleField, 0)
-const resetHeaderField = set(cursorHeaderField, 0)
-const resetHoles = set(holes, [])
-
-// TODO: these are used for selecting which actions are meaningful in a given context
-const focusHeader = set(cursorFocus, 'header')
-const focusBody = set(cursorFocus, 'body')
-
-const reducer = match({
-    // TODO `selectFooAt(path)`, `insertFooAt(index)`, `moveFoo(from, to)` etc
-    appendBlock: () => pipe(
-        appendAndUpdateCursor(programBlocks, cursorBlockField, initRuleBlock()),
-        resetRuleCase,
-        resetHoles,
-        resetHeaderField,
-        focusHeader,
-    ),
-    appendRuleCase: () => withCursor((cursor) => pipe(
-        appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, ruleCase()),
-        resetHoles,
-        holesForRuleCase,
-        focusBody,
-    )),
-    appendRuleLine: () => withCursor((cursor) => pipe(
-        appendL(allValuesAt(cursor), placeholder()),
-        resetHoles,
-        withView(allValuesAt(cursor), holesForRuleLine),
-    )),
-    appendHeaderField: () => withCursor((cursor) =>
-        appendAndUpdateCursor(allHeadersAt(cursor), cursorHeaderField, header())
-    ),
-    appendFactAsRule: () => withCursor((cursor) =>
-        withView(allHeadersAt(cursor), (headers) => pipe(
-            appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, rowsForHeaders(headers)),
-            resetHoles,
-            holesForFactAsRule(headers),
-            focusBody,
-        ))
-    ),
-
-    setHeader: (label) => withCursor((cursor) =>
-        over(headerAt(cursor), (h) => header(label, h && h.varName)),
-    ),
-    setHeaderVar: (varName) => withCursor((cursor) =>
-        set(headerVarAt(cursor), varName)
-    ),
-
-    addOperator: (operator) => withCursor((cursor) => pipe(
-        set(valueAt(cursor), op(operator)),
-        consumeHole,
-        holesForOperator(cursor),
-    )),
-    addVar: (varName) => withCursor((cursor) => pipe(
-        set(valueAt(cursor), varr(varName)),
-        consumeHole,
-    )),
-    // should this be a distinct action from adding a cons list?
-    // how would we represent optional holes?
-    // does a comma need to be entered as an operator (i.e. before the value)?
-    addEmptyList: () => withCursor((cursor) => pipe(
-        set(valueAt(cursor), list()),
-        consumeHole
-    )),
-    addConsList: () => withCursor((cursor) => pipe(
-        set(valueAt(cursor), listCons()),
-        consumeHole,
-        holesForCons(cursor)
-    )),
-    addStruct: (headers) => withCursor((cursor) => pipe(
-        set(valueAt(cursor), initStruct(...headers.map(header))),
-        consumeHole,
-        holesForStruct(cursor, headers)
-    )),
-    addText: (textValue) => withCursor((cursor) => pipe(
-        set(valueAt(cursor), text(textValue)),
-        consumeHole
-    )),
-}, {
-    program: program(),
-    cursor: { block: 0, rule: 0, headerField: 0, holes: [], focus: 'body' },
-})
 
 const dispatch = (type, payload) => (state) => reducer(state, { type, payload })
 
@@ -321,6 +141,33 @@ const factsAsRules = [
     dispatch('addText', 'Green'),
 ]
 
+const editingFields = [
+    dispatch('INIT'),
+    (state) => ({
+        ...state,
+        program: program(
+            ruleBlock(
+                [header('Item'), header('Not in', 'List')],
+                ruleCase(
+                    op('==', varr('Not in'), list())
+                ),
+                ruleCase(
+                    op('==', varr('List'), list([varr('First')], varr('Rest'))),
+                    op('!=', varr('Item'), varr('First')),
+                    struct(
+                        [header('Item'), varr('Item')],
+                        [header('Not in'), varr('Rest')]
+                    )
+                )
+            )
+        ),
+    }),
+    dispatch('selectBody', { block: 0, rule: 1, path: [1] }),
+    dispatch('commentOut'),
+    dispatch('selectHeader', { block: 0, headerField: 1 }),
+    dispatch('setHeaderVar', 'Items'),
+]
+
 const PlayerWrap = (props) =>
     h(Player, props, ({ children, onNext, onPlay, setFrame, frame, frames }) => [
         h(Container, [
@@ -342,7 +189,7 @@ storiesOf('Demo', module)
         h(Container, [
             h(Program, dataRulesOnly),
         ]))
-    .add('edit rule', () =>
+    .add('create rule', () =>
         h(PlayerWrap, {
             showAll: true,
             frames: applyFrames(ruleFrames).map((state, i) => h('div', [
@@ -350,10 +197,18 @@ storiesOf('Demo', module)
                 // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
             ])),
         }))
-    .add('edit fact', () =>
+    .add('create fact', () =>
         h(PlayerWrap, {
             showAll: true,
             frames: applyFrames(factsAsRules).map((state, i) => h('div', [
+                h(Program, { key: i, ...state }),
+                // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
+            ])),
+        }))
+    .add('editing', () =>
+        h(PlayerWrap, {
+            showAll: true,
+            frames: applyFrames(editingFields).map((state, i) => h('div', [
                 h(Program, { key: i, ...state }),
                 // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
             ])),
