@@ -1,18 +1,36 @@
 import { Component } from 'react'
 import h from 'react-hyperscript'
+import { equals, over, lensPath, append, concat, flip } from 'ramda'
 import styled from 'styled-components'
 
 const match = (key, opts) => opts[key] ? opts[key]() : h('span', ['UNKNOWN KEY:', key])
+const concatR = flip(concat)
+const ctxPath = lensPath(['ctx', 'path'])
 
-const TextForm = ({ label }) => h('span', [label])
+const isSelected = ({ block, rule, path, cursor }) =>
+    block === cursor.block &&
+    rule === cursor.rule &&
+    equals(path, cursor.holes[0])
+
+const Selectable = styled.span`
+    background-color: ${({ ctx }) => isSelected(ctx) ? 'rgba(0, 100, 0, 0.2)' : 'none'};
+`
+
+const TextForm = ({ ctx, label }) =>
+    h(Selectable, { ctx }, [label])
 
 const Operator = styled.span`
     display: inline-block;
     margin: 0 4px;
     font-family: 'Fira Code', monospace;
 `
+
 const OperatorForm = ({ ctx, operator, lhs, rhs }) =>
-    h('span', [ h(Form, { ctx, ...lhs }), h(Operator, [operator]), h(Form, { ctx, ...rhs }) ])
+    h(Selectable, { ctx }, [
+        h(Form, over(ctxPath, append('lhs'), { ctx, ...lhs })),
+        h(Operator, [operator]),
+        h(Form, over(ctxPath, append('rhs'), { ctx, ...rhs })),
+    ])
 
 const varName = (ctx, id) => {
     if (ctx.freeVars[id]) { return ctx.freeVars[id] }
@@ -21,20 +39,25 @@ const varName = (ctx, id) => {
     return value.varName || value.label
 }
 
-const Var = styled.span`
+const Var = styled(Selectable)`
     display: inline-block;
-    color: green;
+    color: ${({ ctx }) => isSelected(ctx) ? 'white' : 'green'};
 `
-const VarForm = ({ ctx, id }) => h(Var, [varName(ctx, id)])
+const VarForm = ({ ctx, id }) => h(Var, { ctx }, [varName(ctx, id)])
 
-const List = styled.span`
+const List = styled(Selectable)`
     display: inline-block;
 `
 const ListForm = ({ ctx, children, tail }) =>
-    h(List, [
+    h(List, { ctx }, [
         '[',
-        ...children.map((props, i) => h(Form, { key: i, ctx, ...props })),
-        tail ? h('span', [' | ', h(Form, { key: 'tail', ctx, ...tail })]) : null,
+        ...children.map((props, i) =>
+            h(Form, over(ctxPath, concatR(['children', i]), { key: i, ctx, ...props }))
+        ),
+        tail ? h('span', [
+            ' | ',
+            h(Form, over(ctxPath, append('tail'), { key: 'tail', ctx, ...tail }))])
+            : null,
         ']',
     ])
 
@@ -125,10 +148,10 @@ const StructForm = ({ ctx, children }) => h(OverflowHandler, {
     // TODO: this should look up structure from some sorta global scope
     // i.e. given id `12345`, return ['Foo', 'Bar']
     h(Struct, [
-        ...children.map(([{ id, label }, value]) =>
+        ...children.map(([{ id, label }, value], i) =>
             h(StructEntry, { key: id }, [
                 h(StructLabel, [label, ':']),
-                h(Form, { ctx, ...value }),
+                h(Form, over(ctxPath, concatR(['children', i, 1]), { ctx, ...value })),
             ])),
     ]),
 ])
@@ -137,8 +160,9 @@ const PlaceholderForm = styled.span`
     width: 1em;
     height: 1em;
     display: inline-block;
-    border-radius: 1em;
+    border-radius: 100%;
     background-color: #ccf;
+    border: ${({ ctx }) => isSelected(ctx) ? '2px solid green' : 'none'};
 `
 
 const Comment = styled.span`
@@ -172,6 +196,11 @@ const RuleBlockWrap = styled.div`
     margin-bottom: 1em;
 `
 
+const isSelectedHeader = ({ ctx, headerField }) =>
+    ctx.cursor.block === ctx.block &&
+    ctx.cursor.headerField === headerField &&
+    ctx.cursor.focus === 'header'
+
 const RuleHeader = styled.div`
     color: white;
     background-color: #666;
@@ -180,6 +209,7 @@ const RuleHeader = styled.div`
 const RuleHeaderCell = styled.span`
     margin: 8px;
     display: inline-block;
+    text-decoration: ${(props) => isSelectedHeader(props) ? '#9c9 underline' : 'none'};
 `
 
 const RuleCase = styled.div`
@@ -195,28 +225,35 @@ const RuleRow = styled.div`
 `
 
 const RuleHeaderVar = styled.span`
-    display: inline-block;
     color: #9c9;
     padding-left: 4px;
 `
-const RuleBlock = ({ header, children }) =>
+const RuleBlock = ({ ctx, header, children }) =>
     h(RuleBlockWrap, [
         h(RuleHeader, [
-            ...header.children.map(({ id, label, varName }) =>
-                h(RuleHeaderCell, [
-                    label,
+            ...header.children.map(({ id, label, varName }, i) =>
+                h(RuleHeaderCell, { ctx, headerField: i }, [
+                    label || '  ', // &nbsp
                     ':',
                     varName ? h(RuleHeaderVar, [varName]) : null,
                 ])
             ),
         ]),
-        ...children.map(({ id, children, freeVars }) =>
+        ...children.map(({ id, children, freeVars }, rule) =>
             h(RuleCase, children.map((props, i) =>
-                h(RuleRow, [ h(Form, { key: i, ctx: { header, freeVars }, ...props }) ]))
+                h(RuleRow, [h(Form, {
+                    key: i,
+                    ctx: { ...ctx, header, freeVars, rule, path: [i] },
+                    ...props,
+                }) ]))
             )
         ),
     ])
 
-export const Program = ({ program }) =>
-    h('div', {}, program.children.map((block) =>
-        h(RuleBlock, { key: block.id, ...block })))
+export const Program = ({ program, cursor }) =>
+    h('div', {}, program.children.map((block, i) =>
+        h(RuleBlock, {
+            key: block.id,
+            ctx: { block: i, cursor },
+            ...block,
+        })))
