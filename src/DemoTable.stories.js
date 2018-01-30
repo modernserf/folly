@@ -1,5 +1,5 @@
 import h from 'react-hyperscript'
-import { uncurryN, last, lensPath, lensIndex, view, set, over, compose, pipe, map, append } from 'ramda'
+import { curry, uncurryN, last, lensPath, lensIndex, view, set, over, compose, pipe, map, append } from 'ramda'
 import shortid from 'shortid'
 import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
@@ -18,8 +18,6 @@ export const Container = styled.div`
     color: #333;
     overflow: auto;
 `
-
-const W = (f) => (x) => f(x)(x)
 
 const match = (handlers, initState) => (state = initState, action) => handlers[action.type]
     ? handlers[action.type](action.payload)(state)
@@ -129,27 +127,25 @@ const thenLensIndex = (aLens) => (index) => compose(aLens, lensIndex(index))
 
 const childrenL = lensPath(['children'])
 const programBlocks = lensPath(['program', 'children'])
-const ruleAt = thenLensIndex(programBlocks)
-
-const rows = childrenL
-
+const _blockAt = thenLensIndex(programBlocks)
+const _rows = childrenL
 const _headerItems = lensPath(['header', 'children'])
 const _headerAt = thenLensIndex(_headerItems)
-const headersAt = (ruleIndex) => compose(ruleAt(ruleIndex), _headerItems)
-const headerAt = (ruleIndex, headerIndex) => compose(ruleAt(ruleIndex), _headerAt(headerIndex))
+const _headerVarName = lensPath(['varName'])
+const _ruleAt = thenLensIndex(_rows)
 
-const headerVarName = lensPath(['varName'])
-const headerVarAt = (ruleIndex, headerIndex) =>
-    compose(headerAt(ruleIndex, headerIndex), headerVarName)
-
-const rowsAt = (ruleIndex) => compose(ruleAt(ruleIndex), rows)
-
-const rowAt = thenLensIndex(rows)
-const valuesAt = (ruleIndex, caseIndex) =>
-    compose(ruleAt(ruleIndex), rowAt(caseIndex), childrenL)
-const valueAt = (ruleIndex, caseIndex, path) =>
-    compose(ruleAt(ruleIndex), rowAt(caseIndex), childrenL, lensPath(path))
-const valueAtCursor = ({ block, rule, holes: [hole] }) => valueAt(block, rule, hole)
+const allHeadersAt = ({ block }) =>
+    compose(_blockAt(block), _headerItems)
+const headerAt = ({ block, headerField }) =>
+    compose(_blockAt(block), _headerAt(headerField))
+const headerVarAt = (cursor) =>
+    compose(headerAt(cursor), _headerVarName)
+const allRowsAt = ({ block }) =>
+    compose(_blockAt(block), _rows)
+const allValuesAt = ({ block, rule }) =>
+    compose(_blockAt(block), _ruleAt(rule), childrenL)
+const valueAt = ({ block, rule, holes: [hole] }) =>
+    compose(_blockAt(block), _ruleAt(rule), childrenL, lensPath(hole))
 
 const _ruleCase = (x) => ruleCase(...x)
 const varNameForHeader = (header) => header.varName || header.label
@@ -162,12 +158,13 @@ const cursorHeaderField = lensPath(['cursor', 'headerField'])
 const cursorRuleField = lensPath(['cursor', 'rule'])
 const holes = lensPath(['cursor', 'holes'])
 
-const withView = (lens, f) => W(pipe(view(lens), f))
-const withCursor = (f) => withView(cursor, f)
+const W = (f) => (x) => f(x)(x)
+const withView = curry((lens, f) => W(compose(f, view(lens))))
+const withCursor = withView(cursor)
 
 const consumeHole = dequeue(holes)
 const holesForRuleCase = enqueue(holes, [0])
-const holesForRuleLine = (values) => enqueue(holes, [values.length])
+const holesForRuleLine = (xs) => enqueue(holes, [xs.length - 1])
 const holesForOperator = ({ holes: [hole] }) => pipe(
     enqueue(holes, [...hole, 'lhs']),
     enqueue(holes, [...hole, 'rhs']),
@@ -183,9 +180,9 @@ const holesForFactAsRule = (headers) => pipe(
     ...headers.map((_, i) => enqueue(holes, [i, 'rhs'])),
 )
 
-const appendAndUpdateCursor = (lensToValue, lensToCursor, value) => pipe(
-    appendL(lensToValue, value),
-    withView(lensToValue, (value) => set(lensToCursor, value.length - 1))
+const appendAndUpdateCursor = (lensToValues, lensToCursor, tailValue) => pipe(
+    appendL(lensToValues, tailValue),
+    withView(lensToValues, (xs) => set(lensToCursor, xs.length - 1))
 )
 
 const reducer = match({
@@ -198,63 +195,66 @@ const reducer = match({
         set(cursorRuleField, 0),
         set(cursorHeaderField, 0)
     ),
-    appendRuleCase: () => withCursor(({ block }) => pipe(
-        appendAndUpdateCursor(rowsAt(block), cursorRuleField, ruleCase()),
+    appendRuleCase: () => withCursor((cursor) => pipe(
+        appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, ruleCase()),
         holesForRuleCase
     )),
-    appendRuleLine: () => withCursor(({ block, rule }) => pipe(
-        appendL(valuesAt(block, rule), placeholder()),
-        withView(valuesAt(block, rule), holesForRuleLine)
+    appendRuleLine: () => withCursor((cursor) => pipe(
+        appendL(allValuesAt(cursor), placeholder()),
+        withView(allValuesAt(cursor), holesForRuleLine),
     )),
-    appendHeaderField: () => withCursor(({ block }) =>
-        appendAndUpdateCursor(headersAt(block), cursorHeaderField, header())
+    appendHeaderField: () => withCursor((cursor) =>
+        appendAndUpdateCursor(allHeadersAt(cursor), cursorHeaderField, header())
     ),
-    appendFactAsRule: () => withCursor(({ block }) =>
-        withView(headersAt(block), (headers) => pipe(
-            appendAndUpdateCursor(compose(ruleAt(block), rows), cursorRuleField, rowsForHeaders(headers)),
+    appendFactAsRule: () => withCursor((cursor) =>
+        withView(allHeadersAt(cursor), (headers) => pipe(
+            appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, rowsForHeaders(headers)),
             holesForFactAsRule(headers)
         ))
     ),
 
     // TODO: are these only meaningful in a "header is focused" state?
-    setHeader: (label) => withCursor(
-        ({ block, headerField }) => set(headerAt(block, headerField), header(label)),
+    setHeader: (label) => withCursor((cursor) =>
+        set(headerAt(cursor), header(label)),
     ),
-    setHeaderVar: (varName) => withCursor(
-        ({ block, headerField }) => set(headerVarAt(block, headerField), varName)
+    setHeaderVar: (varName) => withCursor((cursor) =>
+        set(headerVarAt(cursor), varName)
     ),
 
     addOperator: (operator) => withCursor((cursor) => pipe(
-        set(valueAtCursor(cursor), op(operator)),
+        set(valueAt(cursor), op(operator)),
         consumeHole,
         holesForOperator(cursor),
     )),
     addVar: (varName) => withCursor((cursor) => pipe(
-        set(valueAtCursor(cursor), varr(varName)),
+        set(valueAt(cursor), varr(varName)),
         consumeHole,
     )),
     // should this be a distinct action from adding a cons list?
     // how would we represent optional holes?
     // does a comma need to be entered as an operator (i.e. before the value)?
     addEmptyList: () => withCursor((cursor) => pipe(
-        set(valueAtCursor(cursor), list()),
-        dequeue(holes)
+        set(valueAt(cursor), list()),
+        consumeHole
     )),
     addConsList: () => withCursor((cursor) => pipe(
-        set(valueAtCursor(cursor), listCons()),
+        set(valueAt(cursor), listCons()),
         consumeHole,
         holesForCons(cursor)
     )),
     addStruct: (headers) => withCursor((cursor) => pipe(
-        set(valueAtCursor(cursor), initStruct(...headers.map(header))),
+        set(valueAt(cursor), initStruct(...headers.map(header))),
         consumeHole,
         holesForStruct(cursor, headers)
     )),
     addText: (textValue) => withCursor((cursor) => pipe(
-        set(valueAtCursor(cursor), text(textValue)),
-        dequeue(holes)
+        set(valueAt(cursor), text(textValue)),
+        consumeHole
     )),
-}, { program: program(), cursor: { block: 0, rule: 0, headerField: 0, holes: [] } })
+}, {
+    program: program(),
+    cursor: { block: 0, rule: 0, headerField: 0, holes: [] },
+})
 
 const dispatch = (type, payload) => (state) => reducer(state, { type, payload })
 
