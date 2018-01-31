@@ -130,28 +130,28 @@ const Value = styled.td`
     text-align: left;
 `
 
-const StructTable = ({ ctx, children }) =>
+const headerLabelAt = (ctx, id, i) => ctx.ruleHeaders[id].children[i].label
+
+const StructTable = ({ ctx, id, children }) =>
     h(StructTableWrap, [
         h('tbody', [
-            ...children.map(([{ id, label }, value]) =>
-                h('tr', { key: id }, [
-                    h(Head, [label, ':']),
+            ...children.map((value, i) =>
+                h('tr', { key: i }, [
+                    h(Head, [headerLabelAt(ctx, id, i), ':']),
                     h(Value, [h(Form, { ctx, ...value })]),
                 ])
             ),
         ]),
     ])
 
-const StructForm = ({ ctx, children }) => h(OverflowHandler, {
-    fallback: h(StructTable, { ctx, children }),
+const StructForm = ({ ctx, id, children }) => h(OverflowHandler, {
+    fallback: h(StructTable, { ctx, id, children }),
 }, [
-    // TODO: this should look up structure from some sorta global scope
-    // i.e. given id `12345`, return ['Foo', 'Bar']
     h(Struct, [
-        ...children.map(([{ id, label }, value], i) =>
-            h(StructEntry, { key: id }, [
-                h(StructLabel, [label, ':']),
-                h(Form, over(ctxPath, concatR(['children', i, 1]), { ctx, ...value })),
+        ...children.map((value, i) =>
+            h(StructEntry, { key: i }, [
+                h(StructLabel, [headerLabelAt(ctx, id, i), ':']),
+                h(Form, over(ctxPath, concatR(['children', i]), { ctx, ...value })),
             ])),
     ]),
 ])
@@ -250,10 +250,13 @@ const RuleBlock = ({ ctx, header, children }) =>
         ),
     ])
 
+const getRules = (program) =>
+    program.children.reduce((m, rule) => Object.assign(m, { [rule.id]: rule.header }), {})
+
 export const Program = ({ program, cursor }) =>
     h('div', {}, program.children.map((block, i) =>
         h(RuleBlock, {
             key: block.id,
-            ctx: { block: i, cursor },
+            ctx: { block: i, cursor, ruleHeaders: getRules(program) },
             ...block,
         })))
