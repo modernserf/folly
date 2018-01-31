@@ -1,5 +1,14 @@
 import shortid from 'shortid'
-import { curry, uncurryN, lensPath, lensIndex, view, set, over, compose, pipe, map, append } from 'ramda'
+import { curry, uncurryN, lensPath, view, set, over, compose, pipe, map, append } from 'ramda'
+
+const tryNumber = x => Number.isFinite(Number(x)) ? Number(x) : x
+
+const createLensBuilder = (stack) => new Proxy(lensPath, {
+    get: (target, prop, receiver) => createLensBuilder(stack.concat(tryNumber(prop))),
+    apply: () => lensPath(stack),
+})
+
+const L = createLensBuilder([])
 
 const match = (handlers, initState) => (state = initState, action) => handlers[action.type]
     ? handlers[action.type](action.payload)(state)
@@ -33,7 +42,8 @@ export const ruleCase = (freeVars, ...children) => ({
 })
 
 export const placeholder = () => ({ type: 'placeholder' })
-export const op = (operator, lhs = placeholder(), rhs = placeholder()) => ({ type: 'operator', operator, lhs, rhs })
+export const op = (operator, lhs = placeholder(), rhs = placeholder()) =>
+    ({ type: 'operator', operator, lhs, rhs })
 export const varr = (id) => ({ type: 'var', id })
 export const list = (children = [], tail) => ({ type: 'list', children, tail })
 export const struct = (...children) => ({ type: 'struct', children })
@@ -41,71 +51,54 @@ export const comment = (body) => ({ type: 'comment', body })
 
 const listCons = () => list([placeholder()], placeholder())
 const initStruct = (...headers) => struct(...headers.map((h) => [h, placeholder()]))
-export const eq = (varName, rhs) => op('==', varr(varName), rhs)
-const initRuleBlock = () => ruleBlock([header()])
+const eq = (varName) => op('==', varr(varName))
 
 const enqueue = uncurryN(2, (lens) => compose(over(lens), append))
 const dequeue = (lens) => over(lens, (xs) => xs.slice(1))
 const appendL = enqueue
+const mergeL = (lens, next) => over(lens, (prev) => ({ ...prev, ...next }))
 
-const thenLensIndex = (aLens) => (index) => compose(aLens, lensIndex(index))
-
-const childrenL = lensPath(['children'])
-const programBlocks = lensPath(['program', 'children'])
-const _blockAt = thenLensIndex(programBlocks)
-const _rows = childrenL
-const _headerItems = lensPath(['header', 'children'])
-const _headerAt = thenLensIndex(_headerItems)
-const _headerVarName = lensPath(['varName'])
-const _ruleAt = thenLensIndex(_rows)
-const _freeVarsL = lensPath(['freeVars'])
+const blocks = L.program.children
 
 const allHeadersAt = ({ block }) =>
-    compose(_blockAt(block), _headerItems)
+    blocks[block].header.children()
 const headerAt = ({ block, headerField }) =>
-    compose(_blockAt(block), _headerAt(headerField))
+    blocks[block].header.children[headerField]()
 const headerVarAt = (cursor) =>
-    compose(headerAt(cursor), _headerVarName)
+    compose(headerAt(cursor), L.varName())
 const allRowsAt = ({ block }) =>
-    compose(_blockAt(block), _rows)
+    blocks[block].children()
 const allValuesAt = ({ block, rule }) =>
-    compose(_blockAt(block), _ruleAt(rule), childrenL)
+    blocks[block].children[rule].children()
 const valueAt = ({ block, rule, holes: [hole] }) =>
-    compose(_blockAt(block), _ruleAt(rule), childrenL, lensPath(hole))
+    compose(blocks[block].children[rule].children(), lensPath(hole))
 const freeVarAt = ({ block, rule }, id) =>
-    compose(_blockAt(block), _ruleAt(rule), _freeVarsL, lensPath([id]))
+    blocks[block].children[rule].freeVars[id]()
 
 const _ruleCase = (x) => ruleCase({}, ...x)
-const defaultRowValue = compose(eq, (h) => h.id)
-const rowsForHeaders = compose(_ruleCase, map(defaultRowValue))
-
-const cursor = lensPath(['cursor'])
-const cursorBlockField = lensPath(['cursor', 'block'])
-const cursorHeaderField = lensPath(['cursor', 'headerField'])
-const cursorRuleField = lensPath(['cursor', 'rule'])
-const holes = lensPath(['cursor', 'holes'])
-const cursorFocus = lensPath(['cursor', 'focus'])
+const rowsForHeaders = compose(_ruleCase, map((h) => eq(h.id)))
 
 const W = (f) => (x) => f(x)(x)
 const withView = curry((lens, f) => W(compose(f, view(lens))))
-const withCursor = withView(cursor)
+const withCursor = withView(L.cursor())
 
-const consumeHole = dequeue(holes)
-const holesForRuleCase = enqueue(holes, [0])
-const holesForRuleLine = (xs) => enqueue(holes, [xs.length - 1])
+const fillHole = dequeue(L.cursor.holes())
+const digHoleAt = (x) => enqueue(L.cursor.holes(), x)
+const holesForRuleCase = digHoleAt([0])
+const holesForRuleLine = (xs) => digHoleAt([xs.length - 1])
 const holesForOperator = ({ holes: [hole] }) => pipe(
-    enqueue(holes, [...hole, 'lhs']),
-    enqueue(holes, [...hole, 'rhs']),
+    digHoleAt([...hole, 'lhs']),
+    digHoleAt([...hole, 'rhs']),
 )
 const holesForCons = ({ holes: [hole] }) => pipe(
-    enqueue(holes, [...hole, 'children', 0]),
-    enqueue(holes, [...hole, 'tail']),
+    digHoleAt([...hole, 'children', 0]),
+    digHoleAt([...hole, 'tail']),
 )
 const holesForStruct = ({ holes: [hole] }, headers) => pipe(
-    ...headers.map((_, i) => enqueue(holes, [...hole, 'children', i, 1]))
+    ...headers.map((_, i) => digHoleAt([...hole, 'children', i, 1]))
 )
 const holesForFactAsRule = (headers) => pipe(
-    ...headers.map((_, i) => enqueue(holes, [i, 'rhs'])),
+    ...headers.map((_, i) => digHoleAt([i, 'rhs'])),
 )
 
 const appendAndUpdateCursor = (lensToValues, lensToCursor, tailValue) => pipe(
@@ -113,25 +106,25 @@ const appendAndUpdateCursor = (lensToValues, lensToCursor, tailValue) => pipe(
     withView(lensToValues, (xs) => set(lensToCursor, xs.length - 1))
 )
 
-const resetRuleCase = set(cursorRuleField, 0)
-const resetHeaderField = set(cursorHeaderField, 0)
-const resetHoles = set(holes, [])
+const resetRuleCase = set(L.cursor.rule(), 0)
+const resetHeaderField = set(L.cursor.headerField(), 0)
+const resetHoles = set(L.cursor.holes(), [])
 
 // TODO: these are used for selecting which actions are meaningful in a given context
-const focusHeader = set(cursorFocus, 'header')
-const focusBody = set(cursorFocus, 'body')
+const focusHeader = set(L.cursor.focus(), 'header')
+const focusBody = set(L.cursor.focus(), 'body')
 
 export const reducer = match({
     // TODO `selectFooAt(path)`, `insertFooAt(index)`, `moveFoo(from, to)` etc
     appendBlock: () => pipe(
-        appendAndUpdateCursor(programBlocks, cursorBlockField, initRuleBlock()),
+        appendAndUpdateCursor(blocks(), L.cursor.block(), ruleBlock([header()])),
         resetRuleCase,
         resetHoles,
         resetHeaderField,
         focusHeader,
     ),
     appendRuleCase: () => withCursor((cursor) => pipe(
-        appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, ruleCase({})),
+        appendAndUpdateCursor(allRowsAt(cursor), L.cursor.rule(), ruleCase({})),
         resetHoles,
         holesForRuleCase,
         focusBody,
@@ -143,11 +136,11 @@ export const reducer = match({
         withView(allValuesAt(cursor), holesForRuleLine),
     )),
     appendHeaderField: () => withCursor((cursor) =>
-        appendAndUpdateCursor(allHeadersAt(cursor), cursorHeaderField, header())
+        appendAndUpdateCursor(allHeadersAt(cursor), L.cursor.headerField(), header())
     ),
     appendFactAsRule: () => withCursor((cursor) =>
         withView(allHeadersAt(cursor), (headers) => pipe(
-            appendAndUpdateCursor(allRowsAt(cursor), cursorRuleField, rowsForHeaders(headers)),
+            appendAndUpdateCursor(allRowsAt(cursor), L.cursor.rule(), rowsForHeaders(headers)),
             resetHoles,
             holesForFactAsRule(headers),
             focusBody,
@@ -164,58 +157,52 @@ export const reducer = match({
 
     addOperator: (operator) => withCursor((cursor) => pipe(
         set(valueAt(cursor), op(operator)),
-        consumeHole,
+        fillHole,
         holesForOperator(cursor),
     )),
     addVar: (id) => withCursor((cursor) => pipe(
         set(valueAt(cursor), varr(id)),
-        consumeHole,
+        fillHole,
     )),
     addNewVar: ({ id, label }) => withCursor((cursor) => pipe(
         set(freeVarAt(cursor, id), label),
         set(valueAt(cursor), varr(id)),
-        consumeHole
+        fillHole
     )),
     // should this be a distinct action from adding a cons list?
     // how would we represent optional holes?
     // does a comma need to be entered as an operator (i.e. before the value)?
     addEmptyList: () => withCursor((cursor) => pipe(
         set(valueAt(cursor), list()),
-        consumeHole
+        fillHole
     )),
     addConsList: () => withCursor((cursor) => pipe(
         set(valueAt(cursor), listCons()),
-        consumeHole,
+        fillHole,
         holesForCons(cursor)
     )),
     addStruct: (headers) => withCursor((cursor) => pipe(
         set(valueAt(cursor), initStruct(...headers.map(header))),
-        consumeHole,
+        fillHole,
         holesForStruct(cursor, headers)
     )),
     addText: (textValue) => withCursor((cursor) => pipe(
         set(valueAt(cursor), text(textValue)),
-        consumeHole
+        fillHole
     )),
 
     // TODO: this should queue up all the placeholders in the rule
-    selectBody: ({ block, rule, path }) => over(cursor, (prevC) => ({
-        ...prevC,
-        block,
-        rule,
-        holes: [path],
-        focus: 'body',
-    })),
-    selectHeader: ({ block, headerField }) => over(cursor, (prevC) => ({
-        ...prevC,
-        block,
-        headerField,
-        focus: 'header',
-    })),
-
+    selectBody: ({ block, rule, path }) => pipe(
+        mergeL(L.cursor(), { block, rule, holes: [path] }),
+        focusBody,
+    ),
+    selectHeader: ({ block, headerField }) => pipe(
+        mergeL(L.cursor(), { block, headerField }),
+        focusHeader,
+    ),
     commentOut: () => withCursor((cursor) => pipe(
         over(valueAt(cursor), comment),
-        consumeHole,
+        fillHole,
     )),
     removeValue: () => withCursor((cursor) => pipe(
         set(valueAt(cursor), placeholder())
