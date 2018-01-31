@@ -108,6 +108,8 @@ const editingFields = [
     dispatch('addVar', 'rest'),
     dispatch('selectBody', { block: 0, rule: 1, path: [2] }),
     dispatch('removeValue'),
+    dispatch('moveRule', { block: 0, rule: 1, toRule: 0 }),
+    dispatch('moveLine', { block: 0, rule: 0, line: 0, toLine: 1 }),
 ]
 
 const PlayerWrap = (props) =>

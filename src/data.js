@@ -1,5 +1,8 @@
 import shortid from 'shortid'
-import { curry, uncurryN, lens, lensPath, view, set, over, compose, pipe, map, append, path, range } from 'ramda'
+import {
+    curry, uncurryN, lens, lensPath, view, set, over, compose, pipe, map, append, path, range,
+    remove, insert,
+} from 'ramda'
 
 const tryNumber = x => Number.isFinite(Number(x)) ? Number(x) : x
 
@@ -151,8 +154,12 @@ const resetHoles = set(L.cursor.holes(), [])
 const focusHeader = set(L.cursor.focus(), 'header')
 const focusBody = set(L.cursor.focus(), 'body')
 
+const moveIndexes = (from, to) => (list) => pipe(
+    remove(from, 1),
+    insert(to, list[from])
+)(list)
+
 export const reducer = match({
-    // TODO `selectFooAt(path)`, `insertFooAt(index)`, `moveFoo(from, to)` etc
     appendBlock: (id) => pipe(
         appendAndUpdateCursor(blocks(), L.cursor.block(), ruleBlock(id, [header()])),
         resetRuleCase,
@@ -184,6 +191,13 @@ export const reducer = match({
         ))
     ),
 
+    moveBlock: ({ block, toBlock }) =>
+        over(blocks(), moveIndexes(block, toBlock)),
+    moveRule: ({ block, rule, toRule }) =>
+        over(allRowsAt({ block }), moveIndexes(rule, toRule)),
+    moveLine: ({ block, rule, line, toLine }) =>
+        over(allValuesAt({ block, rule }), moveIndexes(line, toLine)),
+
     setHeader: (header) => withCursor((cursor) =>
         set(headerAt(cursor), header)
     ),
@@ -206,7 +220,7 @@ export const reducer = match({
         set(valueAt(cursor), varr(id)),
         fillHole
     )),
-    // should this be a distinct action from adding a cons list?
+    // TODO: should this be a distinct action from adding a cons list?
     // how would we represent optional holes?
     // does a comma need to be entered as an operator (i.e. before the value)?
     addEmptyList: () => withCursor((cursor) => pipe(
@@ -230,7 +244,6 @@ export const reducer = match({
         fillHole
     )),
 
-    // TODO: this should queue up all the placeholders in the rule
     selectBody: ({ block, rule, path }) => pipe(
         mergeL(L.cursor(), { block, rule, holes: [path] }),
         focusBody,
@@ -248,7 +261,16 @@ export const reducer = match({
         set(valueAt(cursor), placeholder())
         // TODO: does this 'garbage collect' free vars?
     )),
+
+    cut: () => withCursor((cursor) => pipe(
+        withView(valueAt(cursor), set(L.clipboard())),
+        set(valueAt(cursor), placeholder())
+    )),
+    paste: () => withCursor((cursor) =>
+        withView(L.clipboard(), set(valueAt(cursor)))
+    ),
 }, {
     program: program(),
     cursor: { block: 0, rule: 0, headerField: 0, holes: [], focus: 'body' },
+    clipboard: null,
 })
