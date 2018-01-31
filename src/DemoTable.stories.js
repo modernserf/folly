@@ -77,22 +77,24 @@ const editingFields = [
     dispatch('INIT'),
     (state) => ({
         ...state,
-        program: program(
+        program: program([
             ruleBlock(
                 'item:not_in:',
                 [header('Item', undefined, 'item'), header('Not in', 'List', 'not_in')],
-                ruleCase(
+                [ruleCase(
                     {},
-                    op('==', varr('not_in'), list())
+                    [op('==', varr('not_in'), list())]
                 ),
                 ruleCase(
                     { first: 'First', rest: 'Rest' },
-                    op('==', varr('not_in'), list([varr('first')], varr('rest'))),
-                    op('!=', varr('item'), varr('first')),
-                    struct('item:not_in:', varr('item'), varr('rest')),
-                )
-            )
-        ),
+                    [
+                        op('==', varr('not_in'), list([varr('first')], varr('rest'))),
+                        op('!=', varr('item'), varr('first')),
+                        struct('item:not_in:', [varr('item'), varr('rest')]),
+                    ]
+                )]
+            ),
+        ]),
     }),
     dispatch('selectBody', { block: 0, rule: 1, path: [1] }),
     dispatch('commentOut'),

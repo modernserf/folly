@@ -1,5 +1,5 @@
 import shortid from 'shortid'
-import { curry, uncurryN, lens, lensPath, view, set, over, compose, pipe, map, append, path } from 'ramda'
+import { curry, uncurryN, lens, lensPath, view, set, over, compose, pipe, map, append, path, range } from 'ramda'
 
 const tryNumber = x => Number.isFinite(Number(x)) ? Number(x) : x
 
@@ -14,7 +14,7 @@ const match = (handlers, initState) => (state = initState, action) => handlers[a
     ? handlers[action.type](action.payload)(state)
     : state
 
-export const program = (...children) => ({ type: 'program', children })
+export const program = (children = []) => ({ type: 'program', children })
 
 export const header = (label = '', varName, id = shortid.generate()) => ({
     type: 'headerCell',
@@ -23,7 +23,7 @@ export const header = (label = '', varName, id = shortid.generate()) => ({
     varName,
 })
 
-export const ruleBlock = (id, headers, ...children) => ({
+export const ruleBlock = (id, headers, children = []) => ({
     type: 'ruleBlock',
     id,
     header: {
@@ -33,20 +33,20 @@ export const ruleBlock = (id, headers, ...children) => ({
     children,
 })
 
-export const ruleCase = (freeVars, ...children) => ({
+export const ruleCase = (freeVars, children = []) => ({
     type: 'ruleCase',
     id: shortid.generate(),
     freeVars,
     children,
 })
 
-export const text = (label) => ({ type: 'text', id: shortid.generate(), label })
+export const text = (label) => ({ type: 'text', label })
 export const placeholder = () => ({ type: 'placeholder' })
 export const op = (operator, lhs = placeholder(), rhs = placeholder()) =>
     ({ type: 'operator', operator, lhs, rhs })
 export const varr = (id) => ({ type: 'var', id })
 export const list = (children = [], tail) => ({ type: 'list', children, tail })
-export const struct = (id, ...children) => ({ type: 'struct', id, children })
+export const struct = (id, children = []) => ({ type: 'struct', id, children })
 export const comment = (body) => ({ type: 'comment', body })
 
 const childPaths = {
@@ -56,8 +56,8 @@ const childPaths = {
 }
 
 const getChildren = (node, prevPath) =>
-    [].concat(...childPaths[node.type](node).map((nextPath) =>
-        traverse(path(nextPath, node), [...prevPath, ...nextPath])))
+    childPaths[node.type](node).map((nextPath) =>
+        traverse(path(nextPath, node), [...prevPath, ...nextPath])).reduce((l, r) => l.concat(r), [])
 
 const traverse = (node, path) =>
     childPaths[node.type]
@@ -70,8 +70,7 @@ const findPlaceholders = ({ holes: [[line]] }, data) =>
         .map((x) => x.path)
 
 const listCons = () => list([placeholder()], placeholder())
-const initStruct = (id, headers) => struct(id, ...headers.map(placeholder))
-const eq = (varName) => op('==', varr(varName))
+const initStruct = (id, arity) => struct(id, range(0, arity).map(placeholder))
 
 const enqueue = uncurryN(2, (lens) => compose(over(lens), append))
 const dequeue = (lens) => over(lens, (xs) => xs.slice(1))
@@ -97,8 +96,8 @@ const valueAt = ({ block, rule, holes: [hole] }) =>
 const freeVarAt = ({ block, rule }, id) =>
     blocks[block].children[rule].freeVars[id]()
 
-const _ruleCase = (x) => ruleCase({}, ...x)
-const rowsForHeaders = compose(_ruleCase, map((h) => eq(h.id)))
+const _ruleCase = (x) => ruleCase({}, x)
+const rowsForHeaders = compose(_ruleCase, map((h) => op('==', varr(h.id))))
 
 const W = (f) => (x) => f(x)(x)
 const withView = curry((lens, f) => W(compose(f, view(lens))))
@@ -116,12 +115,14 @@ const holesForCons = ({ holes: [hole] }) => pipe(
     digHoleAt([...hole, 'children', 0]),
     digHoleAt([...hole, 'tail']),
 )
-const holesForStruct = ({ holes: [hole] }, headers) => pipe(
-    ...headers.map((_, i) => digHoleAt([...hole, 'children', i]))
-)
-const holesForFactAsRule = (headers) => pipe(
-    ...headers.map((_, i) => digHoleAt([i, 'rhs'])),
-)
+
+const foldPipe = (xs) => (init) => xs.reduce((x, f) => f(x), init)
+
+const holesForStruct = ({ holes: [hole] }, arity) =>
+    foldPipe(range(0, arity).map((_, i) => digHoleAt([...hole, 'children', i])))
+
+const holesForFactAsRule = (headers) =>
+    foldPipe(headers.map((_, i) => digHoleAt([i, 'rhs'])))
 
 const concatR = (r) => (l) => l.concat(r)
 
@@ -219,9 +220,9 @@ export const reducer = match({
     )),
     addStruct: (id) => withCursor((cursor) => pipe(
         withView(headersForID(id), (headers) => pipe(
-            set(valueAt(cursor), initStruct(id, headers)),
+            set(valueAt(cursor), initStruct(id, headers.length)),
             fillHole,
-            holesForStruct(cursor, headers)
+            holesForStruct(cursor, headers.length)
         ))
     )),
     addText: (textValue) => withCursor((cursor) => pipe(
