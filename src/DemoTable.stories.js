@@ -100,6 +100,13 @@ const editingFields = [
     dispatch('commentOut'),
     dispatch('selectHeader', { block: 0, headerField: 1 }),
     dispatch('setHeaderVar', 'Items'),
+    dispatch('selectBody', { block: 0, rule: 1, path: [0, 'rhs', 'tail'] }),
+    dispatch('removeValue'),
+    dispatch('selectBody', { block: 0, rule: 1, path: [0, 'rhs', 'children', 0] }),
+    dispatch('removeValue'),
+    dispatch('addVar', 'first'),
+    dispatch('addVar', 'rest'),
+    dispatch('selectBody', { block: 0, rule: 1, path: [2] }),
 ]
 
 const PlayerWrap = (props) =>
