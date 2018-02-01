@@ -1,3 +1,5 @@
+import shortid from 'shortid'
+import { Component } from 'react'
 import h from 'react-hyperscript'
 import { last } from 'ramda'
 import styled from 'styled-components'
@@ -31,6 +33,9 @@ export const Container = styled(BaseCell)`
     overflow: auto;
     margin: 20px;
     padding: 20px;
+    font-family: 'Parc Place', sans-serif;
+    font-size: 14px;
+    color: #333;
 `
 
 const CellCols = styled.div`
@@ -50,6 +55,83 @@ const Cell = styled(BaseCell)`
 `
 
 const dispatch = (type, payload) => ({ type, payload })
+
+const Button = ({ type, payload, onChange, label }) => h('button', {
+    onClick: () => onChange({ type, payload }),
+}, [label || type])
+
+const TextField = ({ type, onChange }) => h('form', {
+    onSubmit: (e) => {
+        e.preventDefault()
+        onChange({ type, payload: e.target.querySelector('input').value })
+    },
+}, [
+    h('label', [type]),
+    h('input', { type: 'text' }),
+])
+
+const ActionContainer = styled.div`
+    position: absolute;
+    width: 100%;
+    bottom: 0;
+    left: 0;
+    background-color: #eee;
+    padding: 20px;
+    font-size: 16px;
+`
+
+const OperatorButton = ({ onChange, id }) =>
+    h('button', { onClick: () => onChange({ type: 'addOperator', payload: id }) }, [id])
+
+const Actions = ({ onChange }) => h(ActionContainer, [
+    h(Button, { onChange, type: 'appendBlock', payload: shortid.generate() }),
+    h(Button, { onChange, type: 'appendRuleCase' }),
+    h(Button, { onChange, type: 'appendRuleLine' }),
+    h(Button, { onChange, type: 'appendHeaderField' }),
+    h(Button, { onChange, type: 'appendFactAsRule' }),
+
+    // TODO: moveBlock | Rule | Line
+
+    h(TextField, { onChange, type: 'setHeaderLabel' }),
+    h(TextField, { onChange, type: 'setHeaderVar' }),
+
+    // TODO: enumerate known operators
+    h(OperatorButton, { onChange, id: '==' }),
+    h(OperatorButton, { onChange, id: '!=' }),
+    h(Button, { onChange, type: 'addEmptyList', label: '[]' }),
+    h(Button, { onChange, type: 'addConsList', label: '[|]' }),
+
+    // TODO: enumerate known vars
+    h(TextField, { onChange, type: 'addVar' }),
+    // TODO: addNewVar
+
+    // TODO: enumerate known structs
+    h(TextField, { onChange, type: 'addStruct' }),
+
+    h(TextField, { onChange, type: 'addText' }),
+
+    // TODO: selectBody | selectHeader
+
+    h(Button, { onChange, type: 'commentOut' }),
+    h(Button, { onChange, type: 'removeValue' }),
+    h(Button, { onChange, type: 'cut' }),
+    h(Button, { onChange, type: 'paste' }),
+])
+
+class Demo extends Component {
+    state = { appState: reducer(undefined, { type: 'INIT' }) }
+    onChange = (action) => {
+        this.setState(({ appState }) => ({ appState: reducer(appState, action) }))
+    }
+    render () {
+        const { appState } = this.state
+
+        return h(Container, [
+            h(Program, appState),
+            h(Actions, { onChange: this.onChange }),
+        ])
+    }
+}
 
 const ruleFrames = [
     dispatch('appendBlock', 'item:not_in:'),
@@ -192,3 +274,6 @@ storiesOf('Demo', module)
         h(PlayerWrap, {
             frames: editingFields,
         }))
+    .add('buttons', () =>
+        h(Demo)
+    )
