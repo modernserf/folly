@@ -4,24 +4,52 @@ import styled from 'styled-components'
 import { storiesOf } from '@storybook/react'
 import { Player, Range } from './story'
 import { Program } from './DemoTable'
-
 import { reducer } from './data'
 import { program, ruleBlock, header, ruleCase, varr, op, struct, list } from './tree'
 
-export const Container = styled.div`
-    width: 375px;
-    height: 812px;
-    border: 1px solid #ccc;
-    border-radius: 20px;
-    margin: 20px;
-    padding: 20px;
+export const Layout = styled.div`
+    display: flex;
+    flex-direction: row;
     font-family: 'Parc Place', sans-serif;
     font-size: 14px;
     color: #333;
-    overflow: auto;
 `
 
-const dispatch = (type, payload) => (state) => reducer(state, { type, payload })
+const Pre = styled.pre`
+    font-family: 'Fira Code';
+    padding: 1em;
+`
+
+const BaseCell = styled.div`
+    width: 375px;
+`
+
+export const Container = styled(BaseCell)`
+    height: 812px;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+    overflow: auto;
+    margin: 20px;
+    padding: 20px;
+`
+
+const CellCols = styled.div`
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    margin: 20px;
+    padding: 20px;
+    height: 812px;
+`
+
+const Cell = styled(BaseCell)`
+    padding-right: 1em;
+    &>div {
+        box-shadow: ${({ active }) => active ? '0 0 10px blue' : 'none'};
+    }
+`
+
+const dispatch = (type, payload) => ({ type, payload })
 
 const ruleFrames = [
     dispatch('appendBlock', 'item:not_in:'),
@@ -113,44 +141,54 @@ const editingFields = [
     dispatch('moveLine', { block: 'item:not_in:', rule: 0, line: 0, toLine: 1 }),
 ]
 
-const PlayerWrap = (props) =>
-    h(Player, props, ({ children, onNext, onPlay, setFrame, frame, frames }) => [
-        h(Container, [
-            children,
+const PlayerWrap = ({ frames }) =>
+    h(Layout, [
+        h('div', [
+            h(Player, {
+                frames: applyFrames(frames).map((state, i) => h(Program, { key: i, ...state })),
+            }, ({ children, onNext, onPlay, setFrame, frame }) => [
+                h(Layout, [
+                    h(Container, [
+                        children,
+                    ]),
+                    h(CellCols, [
+                        applyFrames(frames).map((state, i) =>
+                            h(Cell, {
+                                key: i,
+                                active: frame === i,
+                                onClick: () => setFrame(i),
+                            }, [h(Program, state)])),
+                    ]),
+                ]),
+                h(Layout, [
+                    h(Cell, [
+                        h('button', { onClick: onNext }, ['step']),
+                        h('button', { onClick: onPlay }, ['play']),
+                        h(Range, { min: 0, max: frames.length - 1, value: frame, onChange: setFrame }),
+                    ]),
+                    h(Pre, [JSON.stringify(frames[frame])]),
+                ]),
+            ]),
         ]),
-        h('button', { onClick: onNext }, ['step']),
-        h('button', { onClick: onPlay }, ['play']),
-        h(Range, { min: 0, max: frames.length - 1, value: frame, onChange: setFrame }),
+
     ])
 
 const applyFrames = (data) => data.reduce((items, next) =>
     typeof next === 'function'
         ? items.concat([next(last(items))])
-        : items.concat([next]),
+        : items.concat([reducer(last(items), next)]),
 [])
 
 storiesOf('Demo', module)
     .add('create rule', () =>
         h(PlayerWrap, {
-            showAll: true,
-            frames: applyFrames(ruleFrames).map((state, i) => h('div', [
-                h(Program, { key: i, ...state }),
-                // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
-            ])),
+            frames: ruleFrames,
         }))
     .add('create fact', () =>
         h(PlayerWrap, {
-            showAll: true,
-            frames: applyFrames(factsAsRules).map((state, i) => h('div', [
-                h(Program, { key: i, ...state }),
-                // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
-            ])),
+            frames: factsAsRules,
         }))
     .add('editing', () =>
         h(PlayerWrap, {
-            showAll: true,
-            frames: applyFrames(editingFields).map((state, i) => h('div', [
-                h(Program, { key: i, ...state }),
-                // h('pre', { style: { lineHeight: 1.4 } }, [JSON.stringify(state, null, 2)]),
-            ])),
+            frames: editingFields,
         }))
