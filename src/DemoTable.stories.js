@@ -125,14 +125,10 @@ class Demo extends Component {
     onChange = (action) => {
         this.setState(({ appState }) => ({ appState: reducer(appState, action) }))
     }
-    render () {
-        const { appState } = this.state
-
-        return h(Container, [
-            h(Program, appState),
-            h(Actions, { onChange: this.onChange }),
-        ])
-    }
+    render = () => h(Container, [
+        h(Program, this.state.appState),
+        h(Actions, { onChange: this.onChange }),
+    ])
 }
 
 const ruleFrames = [

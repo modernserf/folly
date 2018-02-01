@@ -1,7 +1,7 @@
-import { Component } from 'react'
 import h from 'react-hyperscript'
 import { equals, over, lensPath, append, concat, flip, mapObjIndexed } from 'ramda'
 import styled from 'styled-components'
+import { OverflowHandler } from './helpers'
 
 const match = (key, opts) => opts[key] ? opts[key]() : h('span', ['UNKNOWN KEY:', key])
 const concatR = flip(concat)
@@ -32,12 +32,11 @@ const OperatorForm = ({ ctx, operator, lhs, rhs }) =>
         h(Form, over(ctxPath, append('rhs'), { ctx, ...rhs })),
     ])
 
-const varName = (ctx, id) => {
-    if (ctx.freeVars[id]) { return ctx.freeVars[id] }
-    const value = ctx.header.children[id]
-    if (!value) { throw new Error('undeclared var ' + id) }
-    return value.varName || value.label
-}
+const varName = (ctx, id) =>
+    ctx.freeVars[id] ||
+    ctx.header.children[id].varName ||
+    ctx.header.children[id].label ||
+    `? ${id} ?`
 
 const Var = styled(Selectable)`
     display: inline-block;
@@ -79,35 +78,6 @@ const StructLabel = styled.span`
     display: inline-block;
     color: #888;
 `
-
-class OverflowHandler extends Component {
-    state = {
-        overflowState: 'init', // init | normal | overflow
-    }
-    componentDidMount () {
-        this.checkOverflow()
-    }
-    componentDidUpdate () {
-        this.checkOverflow()
-    }
-    checkOverflow () {
-        const isOverflowing = this.el.offsetWidth < this.el.scrollWidth
-        const nextState = isOverflowing ? 'overflow' : 'normal'
-        if (this.state.overflowState !== nextState) {
-            this.setState({ overflowState: nextState })
-        }
-    }
-    setRef = (el) => { this.el = el }
-    render () {
-        const { overflowState } = this.state
-        const { children, fallback } = this.props
-        return h('div', { ref: this.setRef, style: { overflow: 'hidden' } }, [
-            h('div', { style: { opacity: 0, position: 'absolute' } }, [children]),
-            overflowState === 'normal' && children,
-            overflowState === 'overflow' && fallback,
-        ])
-    }
-}
 
 const StructTableWrap = styled.table`
     line-height: 1.4;

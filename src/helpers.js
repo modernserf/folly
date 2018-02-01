@@ -90,3 +90,32 @@ export class ContentEditable extends Component {
         })
     }
 }
+
+export class OverflowHandler extends Component {
+    state = {
+        overflowState: 'init', // init | normal | overflow
+    }
+    componentDidMount () {
+        this.checkOverflow()
+    }
+    componentDidUpdate () {
+        this.checkOverflow()
+    }
+    checkOverflow () {
+        const isOverflowing = this.el.offsetWidth < this.el.scrollWidth
+        const nextState = isOverflowing ? 'overflow' : 'normal'
+        if (this.state.overflowState !== nextState) {
+            this.setState({ overflowState: nextState })
+        }
+    }
+    setRef = (el) => { this.el = el }
+    render () {
+        const { overflowState } = this.state
+        const { children, fallback } = this.props
+        return h('div', { ref: this.setRef, style: { overflow: 'hidden' } }, [
+            h('div', { style: { opacity: 0, position: 'absolute' } }, [children]),
+            overflowState === 'normal' && children,
+            overflowState === 'overflow' && fallback,
+        ])
+    }
+}
