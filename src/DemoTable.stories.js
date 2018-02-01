@@ -116,6 +116,8 @@ const Actions = ({ onChange }) => h(ActionContainer, [
     h(Button, { onChange, type: 'removeValue' }),
     h(Button, { onChange, type: 'cut' }),
     h(Button, { onChange, type: 'paste' }),
+    h(Button, { onChange, type: 'undo' }),
+    h(Button, { onChange, type: 'redo' }),
 ])
 
 class Demo extends Component {

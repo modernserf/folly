@@ -1,6 +1,6 @@
 import {
     curry, uncurryN, lensPath, view, set, over, compose, pipe, append, range,
-    remove, insert,
+    remove, insert, last,
 } from 'ramda'
 import {
     program, header, ruleBlock, ruleCase, text, placeholder, op, varr, list, struct, comment, traverse,
@@ -102,7 +102,33 @@ const moveIndexes = (from, to) => (list) => pipe(
     insert(to, list[from])
 )(list)
 
-export const reducer = match({
+const applyUndo = (state) => state.undoStates.length ? ({
+    ...state,
+    program: last(state.undoStates),
+    redoStates: append(state.program, state.redoStates),
+    undoStates: state.undoStates.slice(0, -1),
+}) : state
+
+const applyRedo = (state) => state.redoStates.length ? ({
+    ...state,
+    program: last(state.redoStates),
+    redoStates: state.redoStates.slice(0, 1),
+    undoStates: append(state.program, state.undoStates),
+}) : state
+
+const updateUndoHistory = (prevState, action, reducer) =>
+    ((nextState = reducer(prevState, action)) =>
+        prevState.program === nextState.program
+            ? nextState
+            : { ...nextState, undoStates: append(prevState.program, nextState.undoStates) }
+    )()
+
+const withUndo = (reducer) => (state, action) =>
+    action.type === 'undo' ? applyUndo(state)
+        : action.type === 'redo' ? applyRedo(state)
+            : updateUndoHistory(state || reducer(undefined, { type: 'INIT' }), action, reducer)
+
+export const reducer = withUndo(match({
     appendBlock: (id) => pipe(
         set(blocks[id](), ruleBlock(id, [header()])),
         set(L.cursor.block(), id),
@@ -216,4 +242,6 @@ export const reducer = match({
     program: program(),
     cursor: { block: 0, rule: 0, headerField: 0, holes: [], focus: 'body' },
     clipboard: null,
-})
+    undoStates: [],
+    redoStates: [],
+}))
