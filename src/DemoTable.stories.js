@@ -5,7 +5,8 @@ import { storiesOf } from '@storybook/react'
 import { Player, Range } from './story'
 import { Program } from './DemoTable'
 
-import { reducer, program, ruleBlock, header, ruleCase, varr, op, struct, list } from './data'
+import { reducer } from './data'
+import { program, ruleBlock, header, ruleCase, varr, op, struct, list } from './tree'
 
 export const Container = styled.div`
     width: 375px;
