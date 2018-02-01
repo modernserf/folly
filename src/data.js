@@ -1,5 +1,5 @@
 import {
-    curry, uncurryN, lens, lensPath, view, set, over, compose, pipe, append, range,
+    curry, uncurryN, lensPath, view, set, over, compose, pipe, append, range,
     remove, insert,
 } from 'ramda'
 import {
@@ -84,13 +84,6 @@ const holesAtLinePlaceholders = withCursor((cursor) =>
         over(L.cursor.holes(), concatR(findPlaceholders(cursor, tree)))
     ))
 
-const hasID = (id) => lens(
-    (xs) => xs.find((x) => x.id === id),
-    (value, xs) => xs.map((x) => x.id === id ? value : x)
-)
-
-const headersForID = (id) => compose(blocks(), hasID(id), L.header.children())
-
 const appendAndUpdateCursor = (lensToValues, lensToCursor, tailValue) => pipe(
     appendL(lensToValues, tailValue),
     withView(lensToValues, (xs) => set(lensToCursor, xs.length - 1))
@@ -111,7 +104,8 @@ const moveIndexes = (from, to) => (list) => pipe(
 
 export const reducer = match({
     appendBlock: (id) => pipe(
-        appendAndUpdateCursor(blocks(), L.cursor.block(), ruleBlock(id, [header()])),
+        set(blocks[id](), ruleBlock(id, [header()])),
+        set(L.cursor.block(), id),
         resetRuleCase,
         resetHoles,
         resetHeaderField,
@@ -148,9 +142,6 @@ export const reducer = match({
     moveLine: ({ block, rule, line, toLine }) =>
         over(allValuesAt({ block, rule }), moveIndexes(line, toLine)),
 
-    setHeader: (header) => withCursor((cursor) =>
-        set(headerAt(cursor)(), header)
-    ),
     setHeaderLabel: (label) => withCursor((cursor) =>
         set(headerAt(cursor).label(), label)
     ),
@@ -185,7 +176,7 @@ export const reducer = match({
         holesForCons(cursor)
     )),
     addStruct: (id) => withCursor((cursor) => pipe(
-        withView(headersForID(id), (headers) => pipe(
+        withView(blocks[id].header.children(), (headers) => pipe(
             set(valueAt(cursor), initStruct(id, headers.length)),
             fillHole,
             holesForStruct(cursor, headers.length)

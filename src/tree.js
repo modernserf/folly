@@ -1,6 +1,6 @@
 import { path } from 'ramda'
 
-export const program = (children = []) => ({ type: 'program', children })
+export const program = (children = {}) => ({ type: 'program', children })
 
 export const header = (label = '', varName) => ({
     type: 'headerCell',

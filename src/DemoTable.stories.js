@@ -78,8 +78,8 @@ const editingFields = [
     dispatch('INIT'),
     (state) => ({
         ...state,
-        program: program([
-            ruleBlock(
+        program: program({
+            'item:not_in:': ruleBlock(
                 'item:not_in:',
                 [header('Item'), header('Not in', 'List')],
                 [ruleCase(
@@ -95,22 +95,22 @@ const editingFields = [
                     ]
                 )]
             ),
-        ]),
+        }),
     }),
-    dispatch('selectBody', { block: 0, rule: 1, path: [1] }),
+    dispatch('selectBody', { block: 'item:not_in:', rule: 1, path: [1] }),
     dispatch('commentOut'),
-    dispatch('selectHeader', { block: 0, headerField: 1 }),
+    dispatch('selectHeader', { block: 'item:not_in:', headerField: 1 }),
     dispatch('setHeaderVar', 'Items'),
-    dispatch('selectBody', { block: 0, rule: 1, path: [0, 'rhs', 'tail'] }),
+    dispatch('selectBody', { block: 'item:not_in:', rule: 1, path: [0, 'rhs', 'tail'] }),
     dispatch('removeValue'),
-    dispatch('selectBody', { block: 0, rule: 1, path: [0, 'rhs', 'children', 0] }),
+    dispatch('selectBody', { block: 'item:not_in:', rule: 1, path: [0, 'rhs', 'children', 0] }),
     dispatch('removeValue'),
     dispatch('addVar', 'first'),
     dispatch('addVar', 'rest'),
-    dispatch('selectBody', { block: 0, rule: 1, path: [2] }),
+    dispatch('selectBody', { block: 'item:not_in:', rule: 1, path: [2] }),
     dispatch('removeValue'),
-    dispatch('moveRule', { block: 0, rule: 1, toRule: 0 }),
-    dispatch('moveLine', { block: 0, rule: 0, line: 0, toLine: 1 }),
+    dispatch('moveRule', { block: 'item:not_in:', rule: 1, toRule: 0 }),
+    dispatch('moveLine', { block: 'item:not_in:', rule: 0, line: 0, toLine: 1 }),
 ]
 
 const PlayerWrap = (props) =>

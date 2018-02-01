@@ -1,6 +1,6 @@
 import { Component } from 'react'
 import h from 'react-hyperscript'
-import { equals, over, lensPath, append, concat, flip } from 'ramda'
+import { equals, over, lensPath, append, concat, flip, mapObjIndexed } from 'ramda'
 import styled from 'styled-components'
 
 const match = (key, opts) => opts[key] ? opts[key]() : h('span', ['UNKNOWN KEY:', key])
@@ -130,7 +130,7 @@ const Value = styled.td`
     text-align: left;
 `
 
-const headerLabelAt = (ctx, id, i) => ctx.ruleHeaders[id].children[i].label
+const headerLabelAt = (ctx, id, i) => ctx.ruleHeaders[id][i].label
 
 const StructTable = ({ ctx, id, children }) =>
     h(StructTableWrap, [
@@ -250,13 +250,12 @@ const RuleBlock = ({ ctx, header, children }) =>
         ),
     ])
 
-const getRules = (program) =>
-    program.children.reduce((m, rule) => Object.assign(m, { [rule.id]: rule.header }), {})
+const getRules = mapObjIndexed((block, key) => block.header.children)
 
 export const Program = ({ program, cursor }) =>
-    h('div', {}, program.children.map((block, i) =>
+    h('div', {}, Object.values(program.children).map((block) =>
         h(RuleBlock, {
             key: block.id,
-            ctx: { block: i, cursor, ruleHeaders: getRules(program) },
+            ctx: { block: block.id, cursor, ruleHeaders: getRules(program.children) },
             ...block,
         })))
