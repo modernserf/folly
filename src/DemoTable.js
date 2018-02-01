@@ -34,7 +34,7 @@ const OperatorForm = ({ ctx, operator, lhs, rhs }) =>
 
 const varName = (ctx, id) => {
     if (ctx.freeVars[id]) { return ctx.freeVars[id] }
-    const value = ctx.header.children.find((h) => h.id === id)
+    const value = ctx.header.children[id]
     if (!value) { throw new Error('undeclared var ' + id) }
     return value.varName || value.label
 }

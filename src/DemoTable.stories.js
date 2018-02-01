@@ -26,42 +26,42 @@ const dispatch = (type, payload) => (state) => reducer(state, { type, payload })
 const ruleFrames = [
     dispatch('appendBlock', 'item:not_in:'),
 
-    dispatch('setHeader', header('Item', undefined, 'item')),
+    dispatch('setHeaderLabel', 'Item'),
     dispatch('appendHeaderField'),
-    dispatch('setHeader', header('Not in', undefined, 'not_in')),
+    dispatch('setHeaderLabel', 'Not in'),
     dispatch('setHeaderVar', 'List'),
 
     dispatch('appendRuleCase'),
     dispatch('addOperator', '=='),
-    dispatch('addVar', 'not_in'),
+    dispatch('addVar', 1),
     dispatch('addEmptyList'),
 
     dispatch('appendRuleCase'),
     dispatch('addOperator', '=='),
-    dispatch('addVar', 'not_in'),
+    dispatch('addVar', 1),
     dispatch('addConsList'),
     dispatch('addNewVar', { label: 'First', id: 'first' }),
     dispatch('addNewVar', { label: 'Rest', id: 'rest' }),
 
     dispatch('appendRuleLine'),
     dispatch('addOperator', '!='),
-    dispatch('addVar', 'item'),
+    dispatch('addVar', 0),
     dispatch('addVar', 'first'),
 
     dispatch('appendRuleLine'),
     dispatch('addStruct', 'item:not_in:'),
-    dispatch('addVar', 'item'),
+    dispatch('addVar', 0),
     dispatch('addVar', 'rest'),
 ]
 
 const factsAsRules = [
     dispatch('appendBlock', 'from:to:line:'),
 
-    dispatch('setHeader', header('From')),
+    dispatch('setHeaderLabel', 'From'),
     dispatch('appendHeaderField'),
-    dispatch('setHeader', header('To')),
+    dispatch('setHeaderLabel', 'To'),
     dispatch('appendHeaderField'),
-    dispatch('setHeader', header('Line')),
+    dispatch('setHeaderLabel', 'Line'),
 
     dispatch('appendFactAsRule'),
     dispatch('addText', 'Park Street'),
@@ -81,17 +81,17 @@ const editingFields = [
         program: program([
             ruleBlock(
                 'item:not_in:',
-                [header('Item', undefined, 'item'), header('Not in', 'List', 'not_in')],
+                [header('Item'), header('Not in', 'List')],
                 [ruleCase(
                     {},
-                    [op('==', varr('not_in'), list())]
+                    [op('==', varr(1), list())]
                 ),
                 ruleCase(
                     { first: 'First', rest: 'Rest' },
                     [
-                        op('==', varr('not_in'), list([varr('first')], varr('rest'))),
-                        op('!=', varr('item'), varr('first')),
-                        struct('item:not_in:', [varr('item'), varr('rest')]),
+                        op('==', varr(1), list([varr('first')], varr('rest'))),
+                        op('!=', varr(0), varr('first')),
+                        struct('item:not_in:', [varr(0), varr('rest')]),
                     ]
                 )]
             ),

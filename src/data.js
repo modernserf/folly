@@ -1,8 +1,10 @@
 import {
-    curry, uncurryN, lens, lensPath, view, set, over, compose, pipe, map, append, path, range,
+    curry, uncurryN, lens, lensPath, view, set, over, compose, pipe, append, range,
     remove, insert,
 } from 'ramda'
-import { program, header, ruleBlock, ruleCase, text, placeholder, op, varr, list, struct, comment } from './tree'
+import {
+    program, header, ruleBlock, ruleCase, text, placeholder, op, varr, list, struct, comment, traverse,
+} from './tree'
 
 const tryNumber = x => Number.isFinite(Number(x)) ? Number(x) : x
 
@@ -16,21 +18,6 @@ const L = createLensBuilder([])
 const match = (handlers, initState) => (state = initState, action) => handlers[action.type]
     ? handlers[action.type](action.payload)(state)
     : state
-
-const childPaths = {
-    operator: () => [['lhs'], ['rhs']],
-    struct: (xs) => xs.children.map((_, i) => ['children', i]),
-    list: (xs) => xs.children.map((_, i) => ['children', i]).concat(xs.tail ? [['tail']] : []),
-}
-
-const getChildren = (node, prevPath) =>
-    childPaths[node.type](node).map((nextPath) =>
-        traverse(path(nextPath, node), [...prevPath, ...nextPath])).reduce((l, r) => l.concat(r), [])
-
-const traverse = (node, path) =>
-    childPaths[node.type]
-        ? [{ node, path }, ...getChildren(node, path)]
-        : [{ node, path }]
 
 const findPlaceholders = ({ holes: [[line]] }, data) =>
     traverse(data, [line])
@@ -50,9 +37,7 @@ const blocks = L.program.children
 const allHeadersAt = ({ block }) =>
     blocks[block].header.children()
 const headerAt = ({ block, headerField }) =>
-    blocks[block].header.children[headerField]()
-const headerVarAt = (cursor) =>
-    compose(headerAt(cursor), L.varName())
+    blocks[block].header.children[headerField]
 const allRowsAt = ({ block }) =>
     blocks[block].children()
 const allValuesAt = ({ block, rule }) =>
@@ -65,7 +50,7 @@ const freeVarAt = ({ block, rule }, id) =>
     blocks[block].children[rule].freeVars[id]()
 
 const _ruleCase = (x) => ruleCase({}, x)
-const rowsForHeaders = compose(_ruleCase, map((h) => op('==', varr(h.id))))
+const rowsForHeaders = compose(_ruleCase, (hs) => hs.map((h, i) => op('==', varr(i))))
 
 const W = (f) => (x) => f(x)(x)
 const withView = curry((lens, f) => W(compose(f, view(lens))))
@@ -164,11 +149,13 @@ export const reducer = match({
         over(allValuesAt({ block, rule }), moveIndexes(line, toLine)),
 
     setHeader: (header) => withCursor((cursor) =>
-        set(headerAt(cursor), header)
+        set(headerAt(cursor)(), header)
     ),
-    // TODO: setHeaderLabel (changes label without changing ID)
+    setHeaderLabel: (label) => withCursor((cursor) =>
+        set(headerAt(cursor).label(), label)
+    ),
     setHeaderVar: (varName) => withCursor((cursor) =>
-        set(headerVarAt(cursor), varName)
+        set(headerAt(cursor).varName(), varName)
     ),
 
     addOperator: (operator) => withCursor((cursor) => pipe(
