@@ -1,23 +1,65 @@
+import { Fragment } from 'react'
 import h from 'react-hyperscript'
-import { equals, over, lensPath, append, concat, flip, mapObjIndexed } from 'ramda'
+import { connect } from 'react-redux'
+import { equals, compose } from 'ramda'
 import styled from 'styled-components'
 import { OverflowHandler } from './helpers'
 
 const match = (key, opts) => opts[key] ? opts[key]() : h('span', ['UNKNOWN KEY:', key])
-const concatR = flip(concat)
-const ctxPath = lensPath(['ctx', 'path'])
 
-const isSelected = ({ block, rule, path, cursor }) =>
-    block === cursor.block &&
-    rule === cursor.rule &&
-    equals(path, cursor.holes[0])
+const condProp = (prop, ifTrue, ifFalse) => (props) => props[prop] ? ifTrue : ifFalse
 
-const Selectable = styled.span`
-    background-color: ${({ ctx }) => isSelected(ctx) ? 'rgba(0, 100, 0, 0.2)' : 'none'};
+const withPath = (key, prevPath, props) => ({ path: prevPath.concat(key), ...props })
+
+// selectors
+
+const isSelected = ({ cursor: { block, rule, holes: [hole] } }, { path: [_block, _rule, ...path] }) =>
+    equals([block, rule, hole], [_block, _rule, path])
+
+const isSelectedHeader = ({ cursor: { block, headerField, focus } }, { path: [_block], id }) =>
+    equals([block, headerField, focus], [_block, id, 'header'])
+
+const varName = ({ program: { children: blocks } }, { id, path: [block, rule] }) =>
+    blocks[block].children[rule].freeVars[id] ||
+    blocks[block].header.children[id].varName ||
+    blocks[block].header.children[id].label ||
+    `? ${id} ?`
+
+const headerLabelAt = ({ program: { children: blocks } }, { block, rule }) =>
+    blocks[block].header.children[rule].varName ||
+    blocks[block].header.children[rule].label
+
+// action creators
+const selectBody = (dispatch, { path: [block, rule, ...path] }) => (e) =>
+    dispatch({ type: 'selectBody', payload: { block, rule, path } })
+const selectHeader = (dispatch, props) => (e) =>
+    dispatch({ type: 'selectHeader', payload: { block: props.path[0], headerField: props.id } })
+
+// decorators
+
+const selectable = connect(
+    (state, props) => ({
+        isSelected: isSelected(state, props),
+    }),
+    (dispatch, props) => ({
+        onClick: selectBody(dispatch, props),
+    })
+)
+
+// Text element
+
+const TextForm = compose(
+    selectable,
+    connect((state, props) => ({ children: props.label }))
+)(styled.span`
+    background-color: ${condProp('isSelected', 'rgba(0, 100, 0, 0.2)', 'none')};
+`)
+
+// Operator element
+
+const SelectableOperator = styled.span`
+    background-color: ${condProp('isSelected', 'rgba(0, 100, 0, 0.2)', 'none')};
 `
-
-const TextForm = ({ ctx, label }) =>
-    h(Selectable, { ctx }, [label])
 
 const Operator = styled.span`
     display: inline-block;
@@ -25,45 +67,52 @@ const Operator = styled.span`
     font-family: 'Fira Code', monospace;
 `
 
-const OperatorForm = ({ ctx, operator, lhs, rhs }) =>
-    h(Selectable, { ctx }, [
-        h(Form, over(ctxPath, append('lhs'), { ctx, ...lhs })),
-        h(Operator, [operator]),
-        h(Form, over(ctxPath, append('rhs'), { ctx, ...rhs })),
-    ])
+const OperatorForm = selectable(({ isSelected, onClick, path, operator, lhs, rhs }) =>
+    h(SelectableOperator, { path }, [
+        h(Form, withPath('lhs', path, lhs)),
+        h(Operator, { onClick }, [operator]),
+        h(Form, withPath('rhs', path, rhs)),
+    ]))
 
-const varName = (ctx, id) =>
-    ctx.freeVars[id] ||
-    ctx.header.children[id].varName ||
-    ctx.header.children[id].label ||
-    `? ${id} ?`
+// Var element
 
-const Var = styled(Selectable)`
+const VarForm = compose(
+    selectable,
+    connect((state, props) => ({
+        children: varName(state, props),
+    })),
+)(styled.span`
     display: inline-block;
-    color: ${({ ctx }) => isSelected(ctx) ? 'white' : 'green'};
-`
-const VarForm = ({ ctx, id }) => h(Var, { ctx }, [varName(ctx, id)])
+    background-color: ${condProp('isSelected', 'rgba(0, 100, 0, 0.2)', 'none')};
+    color: ${condProp('isSelected', 'white', 'green')}
+`)
 
-const List = styled(Selectable)`
+// List element
+
+const List = styled.span`
+    background-color: ${condProp('isSelected', 'rgba(0, 100, 0, 0.2)', 'none')};
     display: inline-block;
 `
-const ListForm = ({ ctx, children, tail }) =>
-    h(List, { ctx }, [
-        '[',
-        ...children.map((props, i) =>
-            h(Form, over(ctxPath, concatR(['children', i]), { key: i, ctx, ...props }))
-        ),
+const ListForm = selectable(({ isSelected, onClick, path, children, tail }) =>
+    h(List, { isSelected }, [
+        h('span', { onClick }, '['),
+        children.map((props, i) => h(Fragment, { key: i }, [
+            h(Form, withPath(['children', i], path, props)),
+        ])),
         tail ? h('span', [
-            ' | ',
-            h(Form, over(ctxPath, append('tail'), { key: 'tail', ctx, ...tail }))])
-            : null,
-        ']',
-    ])
+            h('span', { onClick }, ' | '),
+            h(Form, withPath('tail', path, tail)),
+        ]) : null,
+        h('span', { onClick }, ']'),
+    ]))
+
+// Struct element
 
 const Struct = styled.div`
     display: flex;
     flex-direction: row;
     align-items: center;
+    background-color: ${condProp('isSelected', 'rgba(0, 100, 0, 0.2)', 'none')};
 `
 
 const StructEntry = styled.div`
@@ -73,11 +122,13 @@ const StructEntry = styled.div`
     margin-right: 8px;
 `
 
-const StructLabel = styled.span`
+const StructLabel = connect((state, props) => ({
+    children: `${headerLabelAt(state, props)}:`,
+}))(styled.span`
     margin-right: 4px;
     display: inline-block;
     color: #888;
-`
+`)
 
 const StructTableWrap = styled.table`
     line-height: 1.4;
@@ -89,54 +140,60 @@ const StructTableWrap = styled.table`
         vertical-align: top;
         padding-left: 4px;
     }
+    background-color: ${condProp('isSelected', 'rgba(0, 100, 0, 0.2)', 'none')};
 `
 
-const Head = styled.th`
+const Head = connect((state, props) => ({
+    children: `${headerLabelAt(state, props)}:`,
+}))(styled.th`
     text-align: right;
     color: #888;
-`
+`)
 
 const Value = styled.td`
     text-align: left;
 `
 
-const headerLabelAt = (ctx, id, i) => ctx.ruleHeaders[id][i].label
-
-const StructTable = ({ ctx, id, children }) =>
-    h(StructTableWrap, [
+const StructTable = ({ path, isSelected, onClick, id, children }) =>
+    h(StructTableWrap, { isSelected }, [
         h('tbody', [
             ...children.map((value, i) =>
                 h('tr', { key: i }, [
-                    h(Head, [headerLabelAt(ctx, id, i), ':']),
-                    h(Value, [h(Form, { ctx, ...value })]),
+                    h(Head, { onClick, block: id, rule: i }),
+                    h(Value, [h(Form, withPath(['children', i], path, value))]),
                 ])
             ),
         ]),
     ])
 
-const StructForm = ({ ctx, id, children }) => h(OverflowHandler, {
-    fallback: h(StructTable, { ctx, id, children }),
+const StructForm = selectable(({ path, isSelected, onClick, id, children }) => h(OverflowHandler, {
+    fallback: h(StructTable, { path, isSelected, onClick, id, children }),
 }, [
-    h(Struct, [
+    h(Struct, { isSelected }, [
         ...children.map((value, i) =>
             h(StructEntry, { key: i }, [
-                h(StructLabel, [headerLabelAt(ctx, id, i), ':']),
-                h(Form, over(ctxPath, concatR(['children', i]), { ctx, ...value })),
+                h(StructLabel, { onClick, block: id, rule: i }),
+                h(Form, withPath(['children', i], path, value)),
             ])),
     ]),
-])
+]))
 
-const PlaceholderForm = styled.span`
+// Placeholder Element
+
+const PlaceholderForm = selectable(styled.span`
     width: 1em;
     height: 1em;
     display: inline-block;
     border-radius: 100%;
     background-color: #ccf;
-    border: ${({ ctx }) => isSelected(ctx) ? '2px solid green' : 'none'};
-`
+    border: ${condProp('isSelected', '2px solid green', 'none')};
+`)
+
+// Comment element
 
 const Comment = styled.span`
     display: inline-block;
+    background-color: ${condProp('isSelected', 'rgba(0, 100, 0, 0.2)', 'none')};
     &:after {
         content: "";
         position: absolute;
@@ -146,11 +203,21 @@ const Comment = styled.span`
         height: 100%;
         border-bottom: 4px solid rgba(200,0,0,0.3);
     }
-
 `
 
-const CommentForm = ({ ctx, body }) =>
-    h(Comment, [h(Form, { ctx, ...body })])
+const CommentInner = styled.span`
+    user-select: none;
+`
+
+const CommentForm = connect(
+    (state, props) => ({
+        isSelected: isSelected(state, props),
+    }),
+)(({ path, body, isSelected }) => h(Comment, { isSelected }, [
+    h(CommentInner, [ h(Form, { path, ...body }) ]),
+]))
+
+// Root element type
 
 const Form = (props) => match(props.type, {
     text: () => h(TextForm, props),
@@ -166,12 +233,7 @@ const RuleBlockWrap = styled.div`
     margin-bottom: 1em;
 `
 
-const isSelectedHeader = ({ ctx, headerField }) =>
-    ctx.cursor.block === ctx.block &&
-    ctx.cursor.headerField === headerField &&
-    ctx.cursor.focus === 'header'
-
-const RuleHeader = styled.div`
+const RuleHeaderWrap = styled.div`
     color: white;
     background-color: #666;
 `
@@ -179,8 +241,26 @@ const RuleHeader = styled.div`
 const RuleHeaderCell = styled.span`
     margin: 8px;
     display: inline-block;
-    text-decoration: ${(props) => isSelectedHeader(props) ? '#9c9 underline' : 'none'};
+    text-decoration: ${condProp('isSelected', '#9c9 underline', 'none')};
 `
+
+const RuleHeaderVar = styled.span`
+    color: #9c9;
+    padding-left: 4px;
+`
+
+const RuleHeader = connect(
+    (state, props) => ({
+        isSelected: isSelectedHeader(state, props),
+    }),
+    (dispatch, props) => ({
+        onClick: selectHeader(dispatch, props),
+    })
+)(({ id, path, label, varName, isSelected, onClick }) =>
+    h(RuleHeaderCell, { isSelected, onClick }, [
+        h('span', [label, ': ']),
+        varName ? h(RuleHeaderVar, [varName]) : null,
+    ]))
 
 const RuleCase = styled.div`
     :nth-child(odd) {
@@ -194,38 +274,29 @@ const RuleRow = styled.div`
     padding: 0.5em 0.5em 0;
 `
 
-const RuleHeaderVar = styled.span`
-    color: #9c9;
-    padding-left: 4px;
-`
-const RuleBlock = ({ ctx, header, children }) =>
+const RuleBlock = ({ path, header, children }) =>
     h(RuleBlockWrap, [
-        h(RuleHeader, [
-            ...header.children.map(({ id, label, varName }, i) =>
-                h(RuleHeaderCell, { ctx, headerField: i }, [
-                    label || '  ', // &nbsp
-                    ':',
-                    varName ? h(RuleHeaderVar, [varName]) : null,
-                ])
+        h(RuleHeaderWrap, [
+            ...header.children.map(({ label, varName }, i) =>
+                h(RuleHeader, { id: i, path, label, varName })
             ),
         ]),
-        ...children.map(({ id, children, freeVars }, rule) =>
-            h(RuleCase, children.map((props, i) =>
-                h(RuleRow, [h(Form, {
-                    key: i,
-                    ctx: { ...ctx, header, freeVars, rule, path: [i] },
-                    ...props,
-                }) ]))
-            )
+        ...children.map(({ children, freeVars }, rule) =>
+            h(RuleCase, children.map((props, line) =>
+                h(RuleRow, { key: line }, [h(Form, withPath([rule, line], path, props))])
+            ))
         ),
     ])
 
-const getRules = mapObjIndexed((block, key) => block.header.children)
+const Body = styled.div`
+    font-family: 'Parc Place', sans-serif;
+    font-size: 14px;
+    color: #333;
+`
 
-export const Program = ({ program, cursor }) =>
-    h('div', {}, Object.values(program.children).map((block) =>
-        h(RuleBlock, {
-            key: block.id,
-            ctx: { block: block.id, cursor, ruleHeaders: getRules(program.children) },
-            ...block,
-        })))
+export const Program = connect(
+    (state) => ({ blocks: Object.values(state.program.children) })
+)(({ blocks }) =>
+    h(Body, {}, blocks.map((block) =>
+        h(RuleBlock, { key: block.id, path: [block.id], ...block })
+    )))
